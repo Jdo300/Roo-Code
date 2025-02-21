@@ -1,100 +1,127 @@
-# Progress Tracking: Roo Code WebSocket Server - STARTING FRESH
+# Progress Tracking: Roo Code WebSocket Server
 
 ## What Works
-- ✅ Initial planning completed
-- ✅ Architecture designed
-- ✅ Memory bank initialized
-- ✅ Server directory structure created
-- ✅ WebSocket server implementation completed
-- ✅ Configuration system implemented
-- ✅ Connection handling implemented
-- ✅ WebSocket server listening on port 7800
-- ✅ Node.js client successfully connecting
-- ✅ Basic command/response flow working
-- ✅ Auto-approve settings working
-- ✅ Client implementations (Node.js and Python)
-- ✅ API documentation
-- ✅ Usage guide
-- ✅ Example clients with tests
-- ✅ Basic interactive mode implemented in `examples/nodejs-client/test-commands.cjs`
+
+- ✅ WebSocket server implementation
+- ✅ Basic command handling structure
+- ✅ Client connection management
+- ✅ Settings UI components added
+- ✅ WebSocket state management structure
+- ✅ Basic JSON message validation
+- ✅ Server logging and error reporting
+- ✅ Local connection handling
+- ✅ Basic command/response flow
 
 ## What's Left to Fix
 
 ### Current Critical Issues
-- [ ] Command execution logic needs improvement (simplified `CommandHandler.ts`)
-- [ ] Response formatting needs enhancement
-- [ ] TypeScript build errors in webview-ui markdown components (Markdown.tsx, CodeBlock.tsx)
 
-### Testing Issues
-- [x] ~~Client connection testing~~ (PASSED)
-- [x] ~~Basic command flow testing~~ (PASSED)
-- [ ] Command validation testing needed
-- [ ] Error handling scenarios need testing
-- [ ] Improve test assertions
-- [ ] Verify all tests pass
-- ⚪️ Interactive testing script setup (Restarted)
+1. **Settings Persistence (Postponed)**
+
+    - WebSocket enabled state not persisting
+    - Port number changes not persisting
+    - Note: Not blocking core functionality
+
+2. **Command Handling (In Progress)**
+
+    - Command validation needs enhancement
+    - Response verification needed
+    - Error handling improvements needed
+
+3. **UI Feedback (Future)**
+    - No connection status indicator
+    - Limited error feedback
+    - No port validation
+
+### Testing Status
+
+- ✅ Server startup/shutdown tests
+- ✅ Basic client connection tests
+- ⏳ Command execution tests (in progress)
+- ⏳ Message validation tests (in progress)
+- 🔄 Settings UI tests (postponed)
 
 ### Documentation
-- [x] API documentation
-- [x] Usage guide
-- [x] Example client implementations
-- [x] Security considerations
-- [x] WebSocket server setup documentation
-- [ ] PR documentation
-- ⚪️ Interactive testing script documentation (Restarted)
 
-### Final Steps
-- [x] ~~Fix WebSocket server listening issues~~ (FIXED)
-- [x] ~~Fix client connection issues~~ (FIXED)
-- [ ] Re-implement simplified command handling (Restarted)
-- [ ] Implement server-side verification logic
-- [ ] Enhance response formatting
-- [ ] Add command validation
-- [ ] Complete test coverage
-- [ ] PR documentation
-- [ ] PR submission
+- ✅ Basic API documentation
+- ✅ WebSocket server setup docs
+- ✅ Message format documentation
+- ⏳ Command handling documentation (in progress)
+- 🔄 Settings UI documentation (postponed)
 
-## Progress Status (Starting Fresh)
+## Progress Status
 
 ### Overall Status
-🟢 Planning Phase Complete
-🟢 Basic Implementation Complete (Restarted)
-⚪️ Advanced Features (Restarted)
-⚪️ Testing Phase (Restarted)
-🟢 Basic Documentation Complete
-⚪️ PR Documentation (Restarted)
+
+🟢 Core WebSocket Server
+🟢 Basic Command Handling
+🟢 Settings UI Components
+🟡 Command Validation (In Progress)
+🔴 Settings Persistence (Known Issue)
 
 ### Current Focus
-- Rebasing to main branch and setting up fresh project.
-- Re-implementing simplified `CommandHandler.ts`.
-- Re-implementing interactive testing script (`examples/nodejs-client/test-commands.cjs`).
+
+1. **Primary Objectives**
+
+    - Testing WebSocket communication
+    - Implementing proper command handling
+    - Ensuring correct message flow
+    - Adding command response verification
+
+2. **Postponed Items**
+    - Settings persistence fix
+    - UI improvements
+    - Connection status indicator
+    - Enhanced error feedback
 
 ### Resolved Issues
-- Reverted to main branch - starting fresh.
 
-### New Issues
-- Need to re-implement simplified command handling and verification logic.
-- Need to re-setup interactive testing script.
-- TypeScript build errors in webview-ui markdown components (Markdown.tsx, CodeBlock.tsx) need to be resolved.
+- ✅ WebSocket server implementation
+- ✅ Basic command handling structure
+- ✅ Settings UI components
+- ✅ State management structure
+- ✅ Client connection handling
+
+### Known Issues
+
+1. **Settings UI**
+
+    - Settings not persisting between sessions
+    - No validation for port number input
+    - Limited error feedback
+
+2. **Command Handling**
+    - Basic validation only
+    - Limited error handling
+    - No command verification
 
 ### Next Actions
-1. User to delete project files (except `src/server`, `examples/nodejs-client`, `cline_docs`) and refork the repository.
-2. Re-implement simplified `CommandHandler.ts` in the newly forked project.
-3. Re-implement interactive testing script (`examples/nodejs-client/test-commands.cjs`).
-4. Resolve TypeScript build errors in webview-ui markdown components.
+
+1. **Immediate**
+
+    - Test WebSocket communication
+    - Implement command validation
+    - Add response verification
+    - Enhance error handling
+
+2. **Future**
+    - Fix settings persistence
+    - Add connection status indicator
+    - Implement port validation
+    - Enhance error feedback
 
 ## Timeline
-- ⚪️ Restarted - Timeline reset.
+
+- ✅ WebSocket server implementation - Complete
+- ✅ Settings UI components - Complete
+- ⏳ Command handling - In Progress
+- ⏳ Testing & Verification - In Progress
+- 🔄 Settings Persistence - Postponed
+- 🔄 UI Improvements - Postponed
 
 ## Notes
-- Previous attempts to simplify `CommandHandler.ts` and implement verification logic were unsuccessful due to build errors and tool issues.
-- Decided to start fresh by rebasing to the main branch to resolve build issues and ensure a clean implementation.
-- Reverted `CommandHandler.ts` to original state.
-- Reverted `examples/nodejs-client/test-commands.cjs` and `index.cjs` to original state.
-- **Important Entry Points (for WebSocket Client):**
-    - **Port:** 7800 (defined in `roo-code.websocket.port` setting)
-    - **Commands:** Send JSON objects to WebSocket server with the following structure:
-        - Chat message: `{"type": "invoke", "invoke": "sendMessage", "text": "your message here"}`
-        - Plugin command: `{"command": "commandName", "value": commandValue}` (e.g., `{"command": "alwaysAllowFiles", "value": true}`)
-        - Request State: `{"command": "requestState"}`
-    - **Verification:** For settings update commands, include `"verify": true` in the JSON command. The server response will include a `verification` object with `success`, `actualValue`, and `expectedValue` properties.
+
+- Settings persistence is a known issue but not blocking
+- Focus remains on core WebSocket functionality
+- UI improvements will be addressed in future updates
+- Command format has been simplified to match current implementation

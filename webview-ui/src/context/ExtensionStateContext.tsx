@@ -82,6 +82,10 @@ export interface ExtensionStateContextType extends ExtensionState {
 	customModes: ModeConfig[]
 	setCustomModes: (value: ModeConfig[]) => void
 	setMaxOpenTabsContext: (value: number) => void
+	websocketEnabled: boolean
+	websocketPort: number
+	setWebsocketEnabled: (value: boolean) => void
+	setWebsocketPort: (value: number) => void
 }
 
 export const ExtensionStateContext = createContext<ExtensionStateContextType | undefined>(undefined)
@@ -118,6 +122,8 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		autoApprovalEnabled: false,
 		customModes: [],
 		maxOpenTabsContext: 20,
+		websocketEnabled: false,
+		websocketPort: 7800,
 	})
 
 	const [didHydrateState, setDidHydrateState] = useState(false)
@@ -325,6 +331,8 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setAutoApprovalEnabled: (value) => setState((prevState) => ({ ...prevState, autoApprovalEnabled: value })),
 		setCustomModes: (value) => setState((prevState) => ({ ...prevState, customModes: value })),
 		setMaxOpenTabsContext: (value) => setState((prevState) => ({ ...prevState, maxOpenTabsContext: value })),
+		setWebsocketEnabled: (value) => setState((prevState) => ({ ...prevState, websocketEnabled: value })),
+		setWebsocketPort: (value) => setState((prevState) => ({ ...prevState, websocketPort: value })),
 	}
 
 	return <ExtensionStateContext.Provider value={contextValue}>{children}</ExtensionStateContext.Provider>

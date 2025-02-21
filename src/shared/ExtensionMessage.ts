@@ -1,4 +1,4 @@
-// type that represents json data that is sent from extension to webview, called ExtensionMessage and has 'type' enum which can be 'plusButtonClicked' or 'settingsButtonClicked' or 'hello'
+// type that represents json data that is sent from extension to webview
 
 import { ApiConfiguration, ApiProvider, ModelInfo } from "./api"
 import { HistoryItem } from "./HistoryItem"
@@ -46,6 +46,8 @@ export interface ExtensionMessage {
 		| "unboundModels"
 		| "refreshUnboundModels"
 		| "currentCheckpointUpdated"
+		| "websocketEnabled" // Add WebSocket message types
+		| "websocketPort"
 	text?: string
 	action?:
 		| "chatButtonClicked"
@@ -124,11 +126,13 @@ export interface ExtensionState {
 	mode: Mode
 	modeApiConfigs?: Record<Mode, string>
 	enhancementApiConfigId?: string
-	experiments: Record<ExperimentId, boolean> // Map of experiment IDs to their enabled state
+	experiments: Record<ExperimentId, boolean>
 	autoApprovalEnabled?: boolean
 	customModes: ModeConfig[]
-	toolRequirements?: Record<string, boolean> // Map of tool names to their requirements (e.g. {"apply_diff": true} if diffEnabled)
-	maxOpenTabsContext: number // Maximum number of VSCode open tabs to include in context (0-500)
+	toolRequirements?: Record<string, boolean>
+	maxOpenTabsContext: number
+	websocketEnabled: boolean // Add WebSocket settings
+	websocketPort: number
 }
 
 export interface ClineMessage {

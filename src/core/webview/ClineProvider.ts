@@ -129,6 +129,8 @@ type GlobalStateKey =
 	| "modelTemperature"
 	| "mistralCodestralUrl"
 	| "maxOpenTabsContext"
+	| "websocketEnabled"
+	| "websocketPort"
 
 export const GlobalFileNames = {
 	apiConversationHistory: "api_conversation_history.json",
@@ -153,6 +155,8 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 	private latestAnnouncementId = "jan-21-2025-custom-modes" // update to some unique identifier when we add a new announcement
 	configManager: ConfigManager
 	customModesManager: CustomModesManager
+	websocketEnabled: boolean
+	websocketPort: number
 
 	constructor(
 		readonly context: vscode.ExtensionContext,
@@ -165,6 +169,8 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 		this.customModesManager = new CustomModesManager(this.context, async () => {
 			await this.postStateToWebview()
 		})
+		this.websocketEnabled = vscode.workspace.getConfiguration("roo-code").get<boolean>("websocket.enabled") || false
+		this.websocketPort = vscode.workspace.getConfiguration("roo-code").get<number>("websocket.port") || 7800
 
 		// Initialize MCP Hub through the singleton manager
 		McpServerManager.getInstance(this.context, this)
@@ -2469,6 +2475,8 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 			experiments: experiments ?? experimentDefault,
 			mcpServers: this.mcpHub?.getAllServers() ?? [],
 			maxOpenTabsContext: maxOpenTabsContext ?? 20,
+			websocketEnabled: this.websocketEnabled,
+			websocketPort: this.websocketPort,
 		}
 	}
 
@@ -2818,6 +2826,8 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 			autoApprovalEnabled: autoApprovalEnabled ?? false,
 			customModes,
 			maxOpenTabsContext: maxOpenTabsContext ?? 20,
+			websocketEnabled: this.websocketEnabled,
+			websocketPort: this.websocketPort,
 		}
 	}
 

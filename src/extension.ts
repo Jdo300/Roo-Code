@@ -36,6 +36,10 @@ export function activate(context: vscode.ExtensionContext) {
 		context.globalState.update("allowedCommands", defaultCommands)
 	}
 
+	// Read websocket settings from configuration
+	const websocketEnabled = vscode.workspace.getConfiguration("roo-code").get<boolean>("websocket.enabled") || false
+	const websocketPort = vscode.workspace.getConfiguration("roo-code").get<number>("websocket.port") || 7800
+
 	const sidebarProvider = new ClineProvider(context, outputChannel)
 
 	context.subscriptions.push(

@@ -1,77 +1,171 @@
 # Product Context: Roo Code WebSocket Server
 
 ## Why this project exists
-To add remote control capabilities to the Roo Code VSCode plugin, enabling external applications to interact with and control the plugin's features.
+
+To add remote control capabilities to the Roo Code VSCode plugin, enabling external applications to interact with and control the plugin's features through a WebSocket interface.
 
 ## What problems it solves
-- Lack of remote control for Roo Code, limiting its use to direct VSCode interaction
-- Inability to integrate Roo Code with external systems or voice interfaces
-- Limited automation possibilities for plugin functionalities from external applications
+
+- Enables remote control of Roo Code beyond direct VSCode interaction
+- Facilitates integration with external systems and voice interfaces
+- Enables automation of plugin functionalities from external applications
+- Provides a standardized interface for third-party integrations
 
 ## Current Status
-- WebSocket server implementation complete but experiencing startup issues
-- Server not listening on port 7800
-- Node.js client experiencing connection timeouts
-- Enhanced logging added for debugging
-- Core functionality working but connection issues blocking usage
+
+### Working Features
+
+- ✅ WebSocket server implementation complete and operational
+- ✅ Basic command handling structure in place
+- ✅ Client connection management working
+- ✅ Settings UI components implemented
+- ✅ Basic message validation working
+
+### Known Issues
+
+1. **Settings Persistence (To Be Addressed Later)**
+
+    - WebSocket settings (enabled/disabled state, port) not persisting
+    - Note: Core functionality remains operational with default settings
+
+2. **UI Feedback (Future Enhancement)**
+    - No connection status indicator
+    - Limited error feedback
+    - No port validation
 
 ## How it should work
-The Roo Code plugin will host a WebSocket server that:
+
+### WebSocket Server
+
 - Listens on port 7800 (configurable via settings)
-- Accepts WebSocket connections from external clients
-- Processes JSON messages in the format:
-  ```json
-  {
-    "message": "Input text to cline",
-    "command": "command_name",
-    "value": "command_value"  // Optional, type depends on command
-  }
-  ```
+- Accepts WebSocket connections from local clients
+- Processes JSON messages in standardized formats
 
-### Command Set Implementation
-1. Chat Interface Actions:
-   - `run`: Execute proposed action
-   - `stop`: Halt ongoing process
-   - `reject`: Dismiss suggestion/action
-   - `allow_action`: Allow specific action
-   - `deny_action`: Deny specific action
+### Message Formats
 
-2. Auto-Approve Settings:
-   - `set_auto_approve_files`: Enable/disable auto-approve for file operations
-   - `set_auto_approve_terminal`: Enable/disable auto-approve for terminal commands
-   - `set_auto_approve_browser`: Enable/disable auto-approve for browser actions
+#### Chat Messages
 
-### Client Implementations
-- Node.js client with:
-  - Connection URLs support (25.57.68.54:7800, 10.0.0.182:7800)
-  - 30-second operation timeout
-  - Automatic reconnection
-  - Command helper methods
-- Python client available
-- Example tests and documentation provided
+```json
+{
+	"message": "your chat message here"
+}
+```
 
-### Current Debug Focus
-1. Server Initialization:
-   - Added dedicated output channel
-   - Enhanced error logging
-   - Configuration state tracking
-   - Startup sequence verification
+#### Command Messages
 
-2. Connection Issues:
-   - Client timeout investigation
-   - Port availability checking
-   - Network configuration verification
-   - Error logging improvements
+```json
+{
+	"command": "commandName",
+	"value": "commandValue"
+}
+```
 
-### Future Considerations
-- This implementation will serve as a foundation for more advanced remote control features
-- The command set can be expanded based on community needs
-- The WebSocket server could be enhanced to support bidirectional communication for richer integrations
+#### Combined Messages
+
+```json
+{
+	"message": "the message",
+	"command": "commandName",
+	"value": "commandValue"
+}
+```
+
+#### State Request
+
+```json
+{
+	"command": "requestState"
+}
+```
+
+### Settings Management
+
+1. **UI Components**
+
+    - Enable/disable toggle for WebSocket server
+    - Port configuration input
+    - Settings accessible through VSCode settings panel
+
+2. **Default Configuration**
+    - Default port: 7800
+    - Server disabled by default
+    - Local connections only
+
+### Command Set
+
+1. **Chat Interface**
+
+    - Send messages to Cline
+    - Execute proposed actions
+    - Control ongoing processes
+
+2. **Settings Control**
+    - Configure auto-approve settings
+    - Manage WebSocket server settings
+    - Control plugin behavior
+
+### Client Integration
+
+- Node.js client implementation available
+- Python client implementation available
+- Example code and tests provided
+- Documentation for client development
+
+## Future Enhancements
+
+### Immediate Priority
+
+1. **Core Functionality**
+
+    - Enhance command validation
+    - Improve response verification
+    - Strengthen error handling
+
+2. **Testing & Verification**
+    - Complete command execution tests
+    - Verify message validation
+    - Test error handling scenarios
+
+### Future Improvements
+
+1. **Settings UI**
+
+    - Fix settings persistence
+    - Add connection status indicator
+    - Implement port validation
+    - Enhance error feedback
+
+2. **Security & Stability**
+    - Add rate limiting
+    - Enhance input validation
+    - Improve error handling
+    - Add connection management features
 
 ## PR Goals
-This feature will be submitted as a Pull Request to the main Roo Code repository to benefit the wider community. Focus areas include:
-- Clean, well-documented code
-- Comprehensive test coverage
-- Clear documentation for setup and usage
-- Consideration of security implications
-- Robust error handling and logging
+
+This feature will be submitted as a Pull Request focusing on:
+
+1. **Core Functionality**
+
+    - Clean WebSocket server implementation
+    - Robust command handling
+    - Proper error management
+
+2. **Documentation**
+
+    - Clear setup instructions
+    - API documentation
+    - Client integration guide
+    - Security considerations
+
+3. **Quality Assurance**
+    - Comprehensive test coverage
+    - Error handling
+    - Security measures
+    - Performance considerations
+
+## Notes
+
+- Settings persistence is a known issue but not blocking
+- Focus remains on core WebSocket functionality
+- UI improvements will be addressed in future updates

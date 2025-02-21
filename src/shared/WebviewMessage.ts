@@ -95,6 +95,8 @@ export interface WebviewMessage {
 		| "checkpointRestore"
 		| "deleteMcpServer"
 		| "maxOpenTabsContext"
+		| "websocketEnabled"
+		| "websocketPort"
 	text?: string
 	disabled?: boolean
 	askResponse?: ClineAskResponse

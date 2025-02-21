@@ -2,188 +2,173 @@
 
 ## Current Development Focus
 
-### Interactive Testing Script
-- ⚪️ Setting up versatile interactive testing script (`examples/nodejs-client/test-commands.cjs`) for both user and developer testing. (Restarted)
-- ⚪️ Implementing two modes of operation: interactive (user-friendly) and non-interactive (developer-friendly). (Restarted)
-- ⚪️ Implementing round-trip verification for settings updates in the testing script. (Restarted)
+### WebSocket Server Implementation
 
-### Command Handler Enhancements
-- ⚪️ Simplifying `CommandHandler.ts` to act as a thin proxy for command forwarding. (Restarted)
-- ⚪️ Re-implementing verification logic in `src/server/command-handler.ts` to handle setting update verification server-side. (Restarted)
-- ⚪️ Preparing `CommandHandler.ts` for decoupled command handling layer implementation. (Restarted)
+- ✅ Basic WebSocket server implementation in `websocket-server.ts`
+- ✅ Command handling structure in `command-handler.ts`
+- ✅ Settings UI components in `SettingsView.tsx`
+- ⏳ Testing WebSocket communication and command handling
+- 🔄 Settings persistence (postponed)
 
-### Recent Changes
-- Reverted to main branch - starting fresh implementation of WebSocket interactive testing script feature.
+### Known Technical Issues
 
-### Test Infrastructure
-- Basic Node.js client implementation (`examples/nodejs-client/index.cjs`) - to be updated.
-- Basic command testing script (`examples/nodejs-client/test-commands.cjs`) - to be re-implemented with verification support.
-
-
-### Current Status
-⚪️ Starting fresh implementation - no significant changes yet.
-
-### Next Steps
-1. Re-implement simplified `CommandHandler.ts` in the newly forked project.
-2. Re-implement interactive testing script (`examples/nodejs-client/test-commands.cjs`).
-3. Resolve TypeScript build errors in webview-ui markdown components.
-
-
-### Next Steps
-   - Document findings on `vscode.postMessage()` validation (or lack thereof): `vscode.postMessage()` itself likely does not perform validation, so we need to implement explicit validation.
-   - UI Interaction Mechanisms:
-     - Chat messages: Sent programmatically using `vscode.postMessage({ type: "invoke", invoke: "sendMessage", ... })`.
-     - Auto-approve settings: Controlled programmatically using `vscode.postMessage({ type: "[settingName]", bool: true | false })`.
-   - Round-trip verification for settings: Feasible by setting a setting value using `vscode.postMessage()` and then reading back the state to confirm the update.
-   - Decoupled command handling layer: Design a decoupled command handling layer in `src/server/` to handle WebSocket commands, validation, UI interaction, and response formatting.
-
-
-# Technical Context
+1. **Settings Persistence**
+    - Issue: WebSocket settings (enabled state and port) not persisting
+    - Location: `webview-ui/src/components/settings/SettingsView.tsx`
+    - Status: Identified but postponed
+    - Note: Does not affect core WebSocket functionality
 
 ## WebSocket API Entry Points
 
-### Server Port
-- **Port:** 7800 (configurable via VSCode settings: `roo-code.websocket.port`)
+### Server Configuration
+
+- **Default Port:** 7800 (configurable via VSCode settings)
+- **Settings Path:** `webview-ui/src/components/settings/SettingsView.tsx`
+- **State Management:** `webview-ui/src/context/ExtensionStateContext.tsx`
 
 ### Commands
 
 #### Chat Message
-- **Endpoint:** WebSocket server
-- **Message Format (JSON):**
-  ```json
-  {
-    "type": "invoke",
-    "invoke": "sendMessage",
-    "text": "your chat message here"
-  }
-  ```
-- **Usage:** Send a text message to Cline chat interface.
+
+```json
+{
+	"message": "your chat message here"
+}
+```
 
 #### Plugin Commands
-- **Endpoint:** WebSocket server
-- **Message Format (JSON):**
-  ```json
-  {
-    "command": "commandName",
-    "value": commandValue // Optional, command-specific value
-  }
-  ```
-- **Examples:**
-    - Enable auto-approve for files:
-      ```json
-      { "command": "alwaysAllowFiles", "value": true }
-      ```
-    - Request current state:
-      ```json
-      { "command": "requestState" }
-      ```
-    - Run action:
-      ```json
-      { "command": "run", "value": "action identifier" }
-      ```
 
-#### Settings Verification (for Settings Update Commands)
-- **Mechanism:** Round-trip verification
-- **Response:** Server response for settings update commands will include a `verification` object:
-  ```json
-  {
-    "type": "commandName_response",
-    "message": "Command executed and verified",
-    "verification": {
-      "success": true,
-      "settingName": "alwaysAllowFiles",
-      "expectedValue": true,
-      "actualValue": true
-    }
-  }
-  ```
-- **Purpose:** Confirms that settings updates were successfully applied by the plugin.
+```json
+{
+	"command": "commandName",
+	"value": "commandValue"
+}
+```
+
+#### State Request
+
+```json
+{
+	"command": "requestState"
+}
+```
 
 ## Technologies Used
 
 ### Core Technologies
+
 - TypeScript
 - Node.js
 - WebSocket (`ws` library)
 - VSCode Extension API
+- React (for settings UI)
 
-## Development Tools
+### Development Tools
+
 - ESLint for code quality
 - Prettier for code formatting
 - TypeScript compiler
-- esbuild Problem Matchers extension
+- VSCode Extension Development Tools
+
+## Project Structure
+
+```text
+src/
+  server/
+    websocket-server.ts     # WebSocket server implementation
+    command-handler.ts      # Command processing logic
+    config.ts              # Server configuration
+    types.ts              # TypeScript definitions
+
+webview-ui/
+  src/
+    components/
+      settings/
+        SettingsView.tsx   # Settings UI implementation
+    context/
+      ExtensionStateContext.tsx  # State management
+```
 
 ## Development Setup
 
 ### Prerequisites
+
 1. Node.js (version specified in `.nvmrc`)
 2. VSCode
 3. TypeScript
 4. Git
-5. esbuild Problem Matchers extension
 
-### Project Structure
-```
-src/
-  server/
-    websocket-server.ts     # Main WebSocket server implementation
-    command-handler.ts      # Command processing logic
-    config.ts              # Server configuration
-    types.ts              # TypeScript type definitions
+### Build & Run
 
-examples/
-  nodejs-client/
-    index.cjs            # Node.js WebSocket client
-    test-commands.cjs    # Command testing script
-    test-chat.cjs       # Chat testing script
-```
-
-### Development Workflow
 1. Install dependencies:
-   ```bash
-   npm install
-   ```
+
+    ```bash
+    npm install
+    cd webview-ui && npm install
+    ```
 
 2. Build the extension:
-   ```bash
-   npm run build
-   ```
 
-3. Debug in VSCode:
-   - Press F5 to launch extension in debug mode
-   - Use Node.js client to test server
+    ```bash
+    npm run build
+    ```
 
+3. Debug:
+    - Press F5 to launch extension in debug mode
+    - Use WebSocket client to test server
 
 ## Configuration
 
 ### Extension Settings
+
 ```json
 {
-  "roo-code.websocket.port": 7800,
-  "roo-code.websocket.enabled": true
+	"roo-code.websocket.port": 7800,
+	"roo-code.websocket.enabled": true
 }
 ```
-
-### Environment Requirements
-- Windows/Mac/Linux compatibility
-- Node.js runtime
-- Network port availability
-- esbuild Problem Matchers extension
-
 
 ## Monitoring & Debugging
 
 ### Logging
+
 - VSCode output channel ("Roo-Code WebSocket")
 - WebSocket server events
 - Command execution tracking
 
 ### Error Handling
+
 - Connection errors with automatic retries
 - Message parsing errors
 - Command execution errors
 
 ### Diagnostics
+
 - Connection status tracking
 - Client connection events
 - Command/response flow monitoring
+
+## Future Technical Enhancements
+
+1. **Settings Persistence**
+
+    - Implement proper state persistence for WebSocket settings
+    - Add validation for port number input
+    - Add error handling for invalid settings
+
+2. **UI Improvements**
+
+    - Add connection status indicator
+    - Improve error feedback
+    - Add port validation
+
+3. **Command Handling**
+    - Enhance verification for command responses
+    - Improve error handling
+    - Add command validation
+
+## Notes
+
+- Settings persistence is a known issue but not blocking for core functionality
+- Focus remains on WebSocket communication and command handling
+- UI improvements will be addressed in future updates

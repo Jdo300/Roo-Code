@@ -1,7 +1,10 @@
 import * as ws from "ws"
 import { ClineProvider } from "../core/webview/ClineProvider"
 import { ExtensionMessage, ExtensionState } from "../shared/ExtensionMessage"
-import { WebSocketMessage } from "./types"
+import { WebSocketMessage, WebSocketCommand } from "./types"
+
+// Types for auto-approve settings
+type AutoApproveSettings = "alwaysAllowReadOnly" | "alwaysAllowExecute" | "alwaysAllowBrowser"
 
 export class CommandHandler {
 	private provider: ClineProvider
@@ -49,10 +52,10 @@ export class CommandHandler {
 			switch (command) {
 				case "requestState":
 					return this.handleStateCommand(client)
-				case "alwaysAllowFiles":
-				case "alwaysAllowTerminal":
+				case "alwaysAllowReadOnly":
+				case "alwaysAllowExecute":
 				case "alwaysAllowBrowser":
-					await this.handleSettingCommand(command, value, client)
+					await this.handleSettingCommand(command as AutoApproveSettings, value, client)
 					break
 				case "primaryButtonClick":
 				case "secondaryButtonClick":
@@ -66,26 +69,26 @@ export class CommandHandler {
 		}
 	}
 
-	private async handleSettingCommand(command: string, value: boolean, client: ws.WebSocket): Promise<void> {
+	private async handleSettingCommand(
+		setting: AutoApproveSettings,
+		value: boolean,
+		client: ws.WebSocket,
+	): Promise<void> {
 		try {
 			// Get initial state for comparison
 			const initialState = await this.provider.getStateToPostToWebview()
-			const initialValue = this.getSettingValue(initialState, command)
+			const initialValue = initialState[setting]
 
-			// Send command via chat since that's how settings are changed
-			const extensionMessage: ExtensionMessage = {
-				type: "invoke",
-				invoke: "sendMessage",
-				text: `/${command} ${value}`,
-			}
-			await this.provider.postMessageToWebview(extensionMessage)
+			// Create a command object that matches vscode.postMessage format
+			const msg: any = { type: setting, bool: value }
+			await this.provider.postMessageToWebview(msg)
 
 			// Wait briefly for state to update
 			await new Promise((resolve) => setTimeout(resolve, 100))
 
 			// Verify the setting was updated
 			const newState = await this.provider.getStateToPostToWebview()
-			const newValue = this.getSettingValue(newState, command)
+			const newValue = newState[setting]
 
 			// Setting should now match requested value and be different from initial value if a change was requested
 			const success = value === newValue && (value === initialValue || initialValue !== newValue)
@@ -112,23 +115,13 @@ export class CommandHandler {
 		}
 	}
 
-	private getSettingValue(state: ExtensionState, command: string): boolean | undefined {
-		const settingMap: { [key: string]: keyof ExtensionState } = {
-			alwaysAllowFiles: "alwaysAllowReadOnly",
-			alwaysAllowTerminal: "alwaysAllowExecute",
-			alwaysAllowBrowser: "alwaysAllowBrowser",
-		}
-		const stateKey = settingMap[command]
-		return stateKey ? (state[stateKey] as boolean) : undefined
-	}
-
 	private async handleStateCommand(client: ws.WebSocket): Promise<void> {
 		try {
 			const state = await this.provider.getStateToPostToWebview()
 			const settings = {
-				alwaysAllowFiles: state.alwaysAllowReadOnly,
+				alwaysAllowReadOnly: state.alwaysAllowReadOnly,
 				alwaysAllowWrite: state.alwaysAllowWrite,
-				alwaysAllowTerminal: state.alwaysAllowExecute,
+				alwaysAllowExecute: state.alwaysAllowExecute,
 				alwaysAllowBrowser: state.alwaysAllowBrowser,
 				alwaysAllowMcp: state.alwaysAllowMcp,
 				mode: state.mode,

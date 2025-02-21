@@ -4,10 +4,14 @@ import { ExtensionStateContextType, useExtensionState } from "../../context/Exte
 import { validateApiConfiguration, validateModelId } from "../../utils/validate"
 import { vscode } from "../../utils/vscode"
 import ApiOptions from "./ApiOptions"
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import ExperimentalFeature from "./ExperimentalFeature"
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { EXPERIMENT_IDS, experimentConfigsMap, ExperimentId } from "../../../../src/shared/experiments"
 import ApiConfigManager from "./ApiConfigManager"
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Dropdown } from "vscrui"
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { DropdownOption } from "vscrui"
 import { ApiConfiguration } from "../../../../src/shared/api"
 import {
@@ -66,6 +70,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 		soundVolume,
 		terminalOutputLineLimit,
 		writeDelayMs,
+		websocketEnabled,
+		websocketPort,
 	} = cachedState
 
 	useEffect(() => {
@@ -117,6 +123,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 		[],
 	)
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const setExperimentEnabled = useCallback((id: ExperimentId, enabled: boolean) => {
 		setCachedState((prevState) => {
 			if (prevState.experiments?.[id] === enabled) {
@@ -130,7 +137,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 		})
 	}, [])
 
-	const handleSubmit = () => {
+	const handleSubmit = useCallback(() => {
 		const apiValidationResult = validateApiConfiguration(apiConfiguration)
 		const modelIdValidationResult = validateModelId(
 			apiConfiguration,
@@ -140,43 +147,85 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 
 		setApiErrorMessage(apiValidationResult)
 		setModelIdErrorMessage(modelIdValidationResult)
-		if (!apiValidationResult && !modelIdValidationResult) {
-			vscode.postMessage({ type: "alwaysAllowReadOnly", bool: alwaysAllowReadOnly })
-			vscode.postMessage({ type: "alwaysAllowWrite", bool: alwaysAllowWrite })
-			vscode.postMessage({ type: "alwaysAllowExecute", bool: alwaysAllowExecute })
-			vscode.postMessage({ type: "alwaysAllowBrowser", bool: alwaysAllowBrowser })
-			vscode.postMessage({ type: "alwaysAllowMcp", bool: alwaysAllowMcp })
-			vscode.postMessage({ type: "allowedCommands", commands: allowedCommands ?? [] })
-			vscode.postMessage({ type: "soundEnabled", bool: soundEnabled })
-			vscode.postMessage({ type: "soundVolume", value: soundVolume })
-			vscode.postMessage({ type: "diffEnabled", bool: diffEnabled })
-			vscode.postMessage({ type: "checkpointsEnabled", bool: checkpointsEnabled })
-			vscode.postMessage({ type: "browserViewportSize", text: browserViewportSize })
-			vscode.postMessage({ type: "fuzzyMatchThreshold", value: fuzzyMatchThreshold ?? 1.0 })
-			vscode.postMessage({ type: "writeDelayMs", value: writeDelayMs })
-			vscode.postMessage({ type: "screenshotQuality", value: screenshotQuality ?? 75 })
-			vscode.postMessage({ type: "terminalOutputLineLimit", value: terminalOutputLineLimit ?? 500 })
-			vscode.postMessage({ type: "mcpEnabled", bool: mcpEnabled })
-			vscode.postMessage({ type: "alwaysApproveResubmit", bool: alwaysApproveResubmit })
-			vscode.postMessage({ type: "requestDelaySeconds", value: requestDelaySeconds })
-			vscode.postMessage({ type: "rateLimitSeconds", value: rateLimitSeconds })
-			vscode.postMessage({ type: "maxOpenTabsContext", value: maxOpenTabsContext })
-			vscode.postMessage({ type: "currentApiConfigName", text: currentApiConfigName })
-			vscode.postMessage({
-				type: "updateExperimental",
-				values: experiments,
-			})
-			vscode.postMessage({ type: "alwaysAllowModeSwitch", bool: alwaysAllowModeSwitch })
 
+		if (!apiValidationResult && !modelIdValidationResult) {
+			// Provider settings
+			vscode.postMessage({ type: "currentApiConfigName", text: currentApiConfigName })
 			vscode.postMessage({
 				type: "upsertApiConfiguration",
 				text: currentApiConfigName,
 				apiConfiguration,
 			})
-			// onDone()
+
+			// Auto-approve settings
+			vscode.postMessage({ type: "alwaysAllowReadOnly", bool: alwaysAllowReadOnly })
+			vscode.postMessage({ type: "alwaysAllowWrite", bool: alwaysAllowWrite })
+			vscode.postMessage({ type: "alwaysAllowExecute", bool: alwaysAllowExecute })
+			vscode.postMessage({ type: "alwaysAllowBrowser", bool: alwaysAllowBrowser })
+			vscode.postMessage({ type: "alwaysAllowMcp", bool: alwaysAllowMcp })
+			vscode.postMessage({ type: "alwaysAllowModeSwitch", bool: alwaysAllowModeSwitch })
+			vscode.postMessage({ type: "allowedCommands", commands: allowedCommands ?? [] })
+			vscode.postMessage({ type: "writeDelayMs", value: writeDelayMs })
+
+			// Browser settings
+			vscode.postMessage({ type: "browserViewportSize", text: browserViewportSize })
+			vscode.postMessage({ type: "screenshotQuality", value: screenshotQuality ?? 75 })
+
+			// Notification settings
+			vscode.postMessage({ type: "soundEnabled", bool: soundEnabled })
+			vscode.postMessage({ type: "soundVolume", value: soundVolume })
+
+			// WebSocket settings
+			vscode.postMessage({ type: "websocketEnabled", bool: websocketEnabled })
+			vscode.postMessage({ type: "websocketPort", value: websocketPort ?? 7800 })
+
+			// Advanced settings
+			vscode.postMessage({ type: "rateLimitSeconds", value: rateLimitSeconds })
+			vscode.postMessage({ type: "terminalOutputLineLimit", value: terminalOutputLineLimit ?? 500 })
+			vscode.postMessage({ type: "maxOpenTabsContext", value: maxOpenTabsContext })
+			vscode.postMessage({ type: "diffEnabled", bool: diffEnabled })
+			vscode.postMessage({ type: "checkpointsEnabled", bool: checkpointsEnabled })
+			vscode.postMessage({ type: "fuzzyMatchThreshold", value: fuzzyMatchThreshold ?? 1.0 })
+			vscode.postMessage({ type: "mcpEnabled", bool: mcpEnabled })
+			vscode.postMessage({ type: "alwaysApproveResubmit", bool: alwaysApproveResubmit })
+			vscode.postMessage({ type: "requestDelaySeconds", value: requestDelaySeconds })
+			vscode.postMessage({
+				type: "updateExperimental",
+				values: experiments,
+			})
+
 			setChangeDetected(false)
 		}
-	}
+	}, [
+		apiConfiguration,
+		alwaysAllowBrowser,
+		alwaysAllowExecute,
+		alwaysAllowMcp,
+		alwaysAllowModeSwitch,
+		alwaysAllowReadOnly,
+		alwaysAllowWrite,
+		alwaysApproveResubmit,
+		allowedCommands,
+		browserViewportSize,
+		websocketEnabled,
+		websocketPort,
+		checkpointsEnabled,
+		currentApiConfigName,
+		diffEnabled,
+		experiments,
+		fuzzyMatchThreshold,
+		maxOpenTabsContext,
+		mcpEnabled,
+		rateLimitSeconds,
+		requestDelaySeconds,
+		screenshotQuality,
+		soundEnabled,
+		soundVolume,
+		terminalOutputLineLimit,
+		writeDelayMs,
+		extensionState.glamaModels,
+		extensionState.openRouterModels,
+	])
 
 	useEffect(() => {
 		setApiErrorMessage(undefined)
@@ -238,6 +287,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 		}
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const sliderLabelStyle = {
 		minWidth: "45px",
 		textAlign: "right" as const,
@@ -575,289 +625,24 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 				</div>
 
 				<div style={{ marginBottom: 40 }}>
-					<h3 style={{ color: "var(--vscode-foreground)", margin: "0 0 15px 0" }}>Browser Settings</h3>
-					<div style={{ marginBottom: 15 }}>
-						<label style={{ fontWeight: "500", display: "block", marginBottom: 5 }}>Viewport size</label>
-						<div className="dropdown-container">
-							<Dropdown
-								value={browserViewportSize}
-								onChange={(value: unknown) => {
-									setCachedStateField("browserViewportSize", (value as DropdownOption).value)
-								}}
-								style={{ width: "100%" }}
-								options={[
-									{ value: "1280x800", label: "Large Desktop (1280x800)" },
-									{ value: "900x600", label: "Small Desktop (900x600)" },
-									{ value: "768x1024", label: "Tablet (768x1024)" },
-									{ value: "360x640", label: "Mobile (360x640)" },
-								]}
-							/>
-						</div>
-						<p
-							style={{
-								fontSize: "12px",
-								marginTop: "5px",
-								color: "var(--vscode-descriptionForeground)",
-							}}>
-							Select the viewport size for browser interactions. This affects how websites are displayed
-							and interacted with.
-						</p>
-					</div>
-
-					<div style={{ marginBottom: 15 }}>
-						<div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-							<span style={{ fontWeight: "500" }}>Screenshot quality</span>
-							<div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-								<input
-									type="range"
-									min="1"
-									max="100"
-									step="1"
-									value={screenshotQuality ?? 75}
-									className="h-2 focus:outline-0 w-4/5 accent-vscode-button-background"
-									onChange={(e) => setCachedStateField("screenshotQuality", parseInt(e.target.value))}
-								/>
-								<span style={{ ...sliderLabelStyle }}>{screenshotQuality ?? 75}%</span>
-							</div>
-						</div>
-						<p
-							style={{
-								fontSize: "12px",
-								marginTop: "5px",
-								color: "var(--vscode-descriptionForeground)",
-							}}>
-							Adjust the WebP quality of browser screenshots. Higher values provide clearer screenshots
-							but increase token usage.
-						</p>
-					</div>
-				</div>
-
-				<div style={{ marginBottom: 40 }}>
-					<h3 style={{ color: "var(--vscode-foreground)", margin: "0 0 15px 0" }}>Notification Settings</h3>
+					<h3 style={{ color: "var(--vscode-foreground)", margin: "0 0 15px 0" }}>WebSocket Settings</h3>
 					<div style={{ marginBottom: 15 }}>
 						<VSCodeCheckbox
-							checked={soundEnabled}
-							onChange={(e: any) => setCachedStateField("soundEnabled", e.target.checked)}>
-							<span style={{ fontWeight: "500" }}>Enable sound effects</span>
+							checked={extensionState.websocketEnabled}
+							onChange={(e: any) =>
+								vscode.postMessage({ type: "websocketEnabled", bool: e.target.checked })
+							}>
+							Enable WebSocket Server
 						</VSCodeCheckbox>
-						<p
-							style={{
-								fontSize: "12px",
-								marginTop: "5px",
-								color: "var(--vscode-descriptionForeground)",
-							}}>
-							When enabled, Roo will play sound effects for notifications and events.
-						</p>
-					</div>
-					{soundEnabled && (
-						<div
-							style={{
-								marginLeft: 0,
-								paddingLeft: 10,
-								borderLeft: "2px solid var(--vscode-button-background)",
-							}}>
-							<div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-								<span style={{ fontWeight: "500", minWidth: "100px" }}>Volume</span>
-								<input
-									type="range"
-									min="0"
-									max="1"
-									step="0.01"
-									value={soundVolume ?? 0.5}
-									onChange={(e) => setCachedStateField("soundVolume", parseFloat(e.target.value))}
-									className="h-2 focus:outline-0 w-4/5 accent-vscode-button-background"
-									aria-label="Volume"
-								/>
-								<span style={{ minWidth: "35px", textAlign: "left" }}>
-									{((soundVolume ?? 0.5) * 100).toFixed(0)}%
-								</span>
-							</div>
-						</div>
-					)}
-				</div>
-
-				<div style={{ marginBottom: 40 }}>
-					<h3 style={{ color: "var(--vscode-foreground)", margin: "0 0 15px 0" }}>Advanced Settings</h3>
-					<div style={{ marginBottom: 15 }}>
-						<div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-							<span style={{ fontWeight: "500" }}>Rate limit</span>
-							<div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-								<input
-									type="range"
-									min="0"
-									max="60"
-									step="1"
-									value={rateLimitSeconds}
-									onChange={(e) => setCachedStateField("rateLimitSeconds", parseInt(e.target.value))}
-									className="h-2 focus:outline-0 w-4/5 accent-vscode-button-background"
-								/>
-								<span style={{ ...sliderLabelStyle }}>{rateLimitSeconds}s</span>
-							</div>
-						</div>
-						<p style={{ fontSize: "12px", marginTop: "5px", color: "var(--vscode-descriptionForeground)" }}>
-							Minimum time between API requests.
-						</p>
 					</div>
 					<div style={{ marginBottom: 15 }}>
-						<div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-							<span style={{ fontWeight: "500" }}>Terminal output limit</span>
-							<div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-								<input
-									type="range"
-									min="100"
-									max="5000"
-									step="100"
-									value={terminalOutputLineLimit ?? 500}
-									onChange={(e) =>
-										setCachedStateField("terminalOutputLineLimit", parseInt(e.target.value))
-									}
-									className="h-2 focus:outline-0 w-4/5 accent-vscode-button-background"
-								/>
-								<span style={{ ...sliderLabelStyle }}>{terminalOutputLineLimit ?? 500}</span>
-							</div>
-						</div>
-						<p style={{ fontSize: "12px", marginTop: "5px", color: "var(--vscode-descriptionForeground)" }}>
-							Maximum number of lines to include in terminal output when executing commands. When exceeded
-							lines will be removed from the middle, saving tokens.
-						</p>
-					</div>
-
-					<div style={{ marginBottom: 15 }}>
-						<div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-							<span style={{ fontWeight: "500" }}>Open tabs context limit</span>
-							<div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-								<input
-									type="range"
-									min="0"
-									max="500"
-									step="1"
-									value={maxOpenTabsContext ?? 20}
-									onChange={(e) =>
-										setCachedStateField("maxOpenTabsContext", parseInt(e.target.value))
-									}
-									className="h-2 focus:outline-0 w-4/5 accent-vscode-button-background"
-								/>
-								<span style={{ ...sliderLabelStyle }}>{maxOpenTabsContext ?? 20}</span>
-							</div>
-						</div>
-						<p style={{ fontSize: "12px", marginTop: "5px", color: "var(--vscode-descriptionForeground)" }}>
-							Maximum number of VSCode open tabs to include in context. Higher values provide more context
-							but increase token usage.
-						</p>
-					</div>
-
-					<div style={{ marginBottom: 15 }}>
-						<VSCodeCheckbox
-							checked={diffEnabled}
-							onChange={(e: any) => {
-								setCachedStateField("diffEnabled", e.target.checked)
-								if (!e.target.checked) {
-									// Reset experimental strategy when diffs are disabled
-									setExperimentEnabled(EXPERIMENT_IDS.DIFF_STRATEGY, false)
-								}
-							}}>
-							<span style={{ fontWeight: "500" }}>Enable editing through diffs</span>
-						</VSCodeCheckbox>
-						<p
-							style={{
-								fontSize: "12px",
-								marginTop: "5px",
-								color: "var(--vscode-descriptionForeground)",
-							}}>
-							When enabled, Roo will be able to edit files more quickly and will automatically reject
-							truncated full-file writes. Works best with the latest Claude 3.5 Sonnet model.
-						</p>
-
-						{diffEnabled && (
-							<div style={{ marginTop: 10 }}>
-								<div
-									style={{
-										display: "flex",
-										flexDirection: "column",
-										gap: "5px",
-										marginTop: "10px",
-										marginBottom: "10px",
-										paddingLeft: "10px",
-										borderLeft: "2px solid var(--vscode-button-background)",
-									}}>
-									<span style={{ fontWeight: "500" }}>Match precision</span>
-									<div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-										<input
-											type="range"
-											min="0.8"
-											max="1"
-											step="0.005"
-											value={fuzzyMatchThreshold ?? 1.0}
-											onChange={(e) => {
-												setCachedStateField("fuzzyMatchThreshold", parseFloat(e.target.value))
-											}}
-											className="h-2 focus:outline-0 w-4/5 accent-vscode-button-background"
-										/>
-										<span style={{ ...sliderLabelStyle }}>
-											{Math.round((fuzzyMatchThreshold || 1) * 100)}%
-										</span>
-									</div>
-									<p
-										style={{
-											fontSize: "12px",
-											marginTop: "5px",
-											color: "var(--vscode-descriptionForeground)",
-										}}>
-										This slider controls how precisely code sections must match when applying diffs.
-										Lower values allow more flexible matching but increase the risk of incorrect
-										replacements. Use values below 100% with extreme caution.
-									</p>
-									<ExperimentalFeature
-										key={EXPERIMENT_IDS.DIFF_STRATEGY}
-										{...experimentConfigsMap.DIFF_STRATEGY}
-										enabled={experiments[EXPERIMENT_IDS.DIFF_STRATEGY] ?? false}
-										onChange={(enabled) =>
-											setExperimentEnabled(EXPERIMENT_IDS.DIFF_STRATEGY, enabled)
-										}
-									/>
-								</div>
-							</div>
-						)}
-
-						<div style={{ marginBottom: 15 }}>
-							<div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-								<span style={{ color: "var(--vscode-errorForeground)" }}>⚠️</span>
-								<VSCodeCheckbox
-									checked={checkpointsEnabled}
-									onChange={(e: any) => {
-										setCachedStateField("checkpointsEnabled", e.target.checked)
-									}}>
-									<span style={{ fontWeight: "500" }}>Enable experimental checkpoints</span>
-								</VSCodeCheckbox>
-							</div>
-							<p
-								style={{
-									fontSize: "12px",
-									marginTop: "5px",
-									color: "var(--vscode-descriptionForeground)",
-								}}>
-								When enabled, Roo will save a checkpoint whenever a file in the workspace is modified,
-								added or deleted, letting you easily revert to a previous state.
-							</p>
-						</div>
-
-						{Object.entries(experimentConfigsMap)
-							.filter((config) => config[0] !== "DIFF_STRATEGY")
-							.map((config) => (
-								<ExperimentalFeature
-									key={config[0]}
-									{...config[1]}
-									enabled={
-										experiments[EXPERIMENT_IDS[config[0] as keyof typeof EXPERIMENT_IDS]] ?? false
-									}
-									onChange={(enabled) =>
-										setExperimentEnabled(
-											EXPERIMENT_IDS[config[0] as keyof typeof EXPERIMENT_IDS],
-											enabled,
-										)
-									}
-								/>
-							))}
+						<VSCodeTextField
+							value={String(extensionState.websocketPort)}
+							onChange={(e: any) =>
+								vscode.postMessage({ type: "websocketPort", value: parseInt(e.target.value) })
+							}>
+							WebSocket Port
+						</VSCodeTextField>
 					</div>
 				</div>
 

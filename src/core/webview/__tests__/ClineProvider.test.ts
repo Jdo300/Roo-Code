@@ -352,6 +352,8 @@ describe("ClineProvider", () => {
 			customModes: [],
 			experiments: experimentDefault,
 			maxOpenTabsContext: 20,
+			websocketEnabled: false,
+			websocketPort: 7800,
 		}
 
 		const message: ExtensionMessage = {

@@ -7,6 +7,7 @@ import { CodeActionProvider } from "./core/CodeActionProvider"
 import { DIFF_VIEW_URI_SCHEME } from "./integrations/editor/DiffViewProvider"
 import { handleUri, registerCommands, registerCodeActions, registerTerminalActions } from "./activate"
 import { McpServerManager } from "./services/mcp/McpServerManager"
+import { WebSocketServer } from "./server/websocket-server" // Import WebSocketServer
 
 /**
  * Built using https://github.com/microsoft/vscode-webview-ui-toolkit
@@ -42,6 +43,13 @@ export function activate(context: vscode.ExtensionContext) {
 			webviewOptions: { retainContextWhenHidden: true },
 		}),
 	)
+
+	const webSocketServer = new WebSocketServer(sidebarProvider) // Instantiate WebSocketServer
+	webSocketServer.start() // Start WebSocketServer
+
+	context.subscriptions.push({
+		dispose: () => webSocketServer.stop(), // Dispose WebSocketServer on extension deactivation
+	})
 
 	registerCommands({ context, outputChannel, provider: sidebarProvider })
 
@@ -89,6 +97,5 @@ export function activate(context: vscode.ExtensionContext) {
 // This method is called when your extension is deactivated
 export async function deactivate() {
 	outputChannel.appendLine("Roo-Code extension deactivated")
-	// Clean up MCP server manager
 	await McpServerManager.cleanup(extensionContext)
 }

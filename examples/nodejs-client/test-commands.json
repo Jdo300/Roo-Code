@@ -1,0 +1,28 @@
+[
+	{
+		"message": "Hi Cline! This is a chat test via direct message field"
+	},
+	{
+		"command": "requestState"
+	},
+	{
+		"command": "alwaysAllowFiles",
+		"value": true
+	},
+	{
+		"command": "requestState"
+	},
+	{
+		"message": "Could you create a simple Python script that prints 'Hello World'?"
+	},
+	{
+		"command": "primaryButtonClick"
+	},
+	{
+		"command": "alwaysAllowFiles",
+		"value": false
+	},
+	{
+		"command": "requestState"
+	}
+]

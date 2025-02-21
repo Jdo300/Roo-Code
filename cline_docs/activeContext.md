@@ -80,11 +80,11 @@
 
 ### Next Actions
 
-1. User to restore `examples/nodejs-client` directory and contents.
-2. Re-implement interactive testing script (`examples/nodejs-client/test-commands.cjs`).
-3. Re-implement server-side command handling (`src/server/command-handler.ts`) - already simplified.
-4. Re-implement server-side verification logic (`src/server/command-handler.ts`).
-5. **[Future Enhancement] Re-add WebSocket Settings to UI:** Remember to re-add the WebSocket server settings (port, enabled/disabled) to the settings page in the UI (`webview-ui/src/components/settings/SettingsView.tsx`) after the basic functionality is working again.
+- User to restore `examples/nodejs-client` directory and contents.
+- Re-implement interactive testing script (`examples/nodejs-client/test-commands.cjs`).
+- Re-implement server-side command handling (`src/server/command-handler.ts`) - already simplified.
+- Re-implement server-side verification logic (`src/server/command-handler.ts`).
+- **[Future Enhancement] Re-add WebSocket Settings to UI:** Remember to re-add the WebSocket server settings (port, enabled/disabled) to the settings page in the UI (`webview-ui/src/components/settings/SettingsView.tsx`) after the basic functionality is working again.
 
 ## Timeline
 

@@ -18,7 +18,21 @@ function sendMessage(message) {
 function startInteractiveMode() {
     console.log('\nStarting Interactive Mode');
     displayHelp();
-    promptCommand();
+    
+    ws.on('message', (message) => {
+        try {
+            const response = JSON.parse(message);
+            console.log('\n[Response]');
+            console.log(JSON.stringify(response, null, 2));
+            promptCommand(); // Prompt for next command after receiving response
+        } catch (error) {
+            console.error('Error parsing response:', error.message);
+            console.log('Raw response:', message.toString());
+            promptCommand(); // Still prompt for next command even on error
+        }
+    });
+
+    promptCommand(); // Initial command prompt
 }
 
 function displayHelp() {
@@ -33,18 +47,28 @@ function displayHelp() {
     console.log('\nExamples:');
     console.log('  {"message": "Hello Cline!"}');
     console.log('  {"command": "requestState"}');
-    console.log('  {"command": "alwaysAllowFiles", "value": true}');
+    console.log('  {"command": "alwaysAllowReadOnly", "value": true}'); // Corrected example
 }
 
 function promptCommand() {
     readline.question('> ', (commandString) => {
+        if (commandString.toLowerCase() === 'exit') {
+            ws.close();
+            readline.close();
+            return;
+        } else if (commandString.toLowerCase() === 'help' || commandString.toLowerCase() === '?') {
+            displayHelp();
+            promptCommand();
+            return;
+        }
+
         try {
             const command = JSON.parse(commandString);
             sendMessage(command);
         } catch (error) {
             console.error('Error parsing command (must be valid JSON):', error.message);
         }
-        promptCommand();
+        // Do not promptCommand() here, prompt will be called after response is received in interactive mode
     });
 }
 

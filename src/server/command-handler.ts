@@ -88,13 +88,8 @@ export class CommandHandler {
 		client: ws.WebSocket,
 	): Promise<void> {
 		try {
-			this.outputChannel.appendLine(`[handleSettingCommand] Setting: ${setting}, Value: ${value}`)
-			this.outputChannel.appendLine(
-				"[handleSettingCommand] Provider: " + (this.provider ? "exists" : "undefined"),
-			)
 			// Get initial state for comparison
 			const initialState = await this.provider.getStateToPostToWebview()
-			this.outputChannel.appendLine("[handleSettingCommand] Initial state: " + JSON.stringify(initialState))
 			const initialValue = initialState[setting]
 
 			// Update the state directly
@@ -106,11 +101,9 @@ export class CommandHandler {
 
 			// Post state update to webview
 			await this.provider.postStateToWebview()
-			this.outputChannel.appendLine("[handleSettingCommand] New state: " + JSON.stringify(newState))
 
 			// Setting should now match requested value and be different from initial value if a change was requested
 			const success = value === newValue && (value === initialValue || initialValue !== newValue)
-			this.outputChannel.appendLine(`[handleSettingCommand] Success: ${success}`)
 			this.sendResponse(client, success ? "success" : "error")
 		} catch (error) {
 			this.sendResponse(client, "error")

@@ -46,6 +46,10 @@ const App = () => {
 				if (newTab) {
 					switchTab(newTab)
 				}
+			} else if (message.type === "state") {
+				if (message.state) {
+					setExtensionState(message.state)
+				}
 			}
 		},
 		[switchTab],

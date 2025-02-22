@@ -1,14 +1,11 @@
 [
 	{
+		"command": "alwaysAllowReadOnly",
+		"value": true,
+		"comment": "Set alwaysAllowReadOnly to true"
+	},
+	{
 		"command": "requestState",
-		"comment": "Get the WebSocket server state"
-	},
-	{
-		"message": "Could you create a Python hello world script?",
-		"comment": "Send a chat message to test functionality"
-	},
-	{
-		"command": "primaryButtonClick",
-		"comment": "Click approve button"
+		"comment": "Get the WebSocket server state and verify setting"
 	}
 ]

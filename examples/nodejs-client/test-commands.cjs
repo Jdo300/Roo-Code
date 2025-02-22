@@ -99,17 +99,20 @@ function startNonInteractiveMode(filePath) {
 ws.on('open', () => {
     console.log('WebSocket Connected');
     
-    const args = process.argv.slice(2);
-    if (args[0] === 'non-interactive') {
-        if (!args[1]) {
-            console.error('Error: No commands file specified');
-            console.log('Usage: node test-commands.cjs non-interactive <commands.json>');
-            process.exit(1);
+    // Add a 1-second delay before sending commands
+    setTimeout(() => {
+        const args = process.argv.slice(2);
+        if (args[0] === 'non-interactive') {
+            if (!args[1]) {
+                console.error('Error: No commands file specified');
+                console.log('Usage: node test-commands.cjs non-interactive <commands.json>');
+                process.exit(1);
+            }
+            startNonInteractiveMode(args[1]);
+        } else {
+            startInteractiveMode();
         }
-        startNonInteractiveMode(args[1]);
-    } else {
-        startInteractiveMode();
-    }
+    }, 1000); // 1000 milliseconds = 1 second
 });
 
 ws.on('error', (error) => {

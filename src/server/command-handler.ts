@@ -6,22 +6,26 @@ import { WebSocketMessage, WebSocketCommand } from "./types"
 // Types for auto-approve settings
 type AutoApproveSettings = "alwaysAllowReadOnly" | "alwaysAllowExecute" | "alwaysAllowBrowser"
 
+import * as vscode from "vscode"
+
 export class CommandHandler {
 	private provider: ClineProvider
+	private readonly outputChannel: vscode.OutputChannel
 
-	constructor(provider: ClineProvider) {
+	constructor(provider: ClineProvider, outputChannel: vscode.OutputChannel) {
 		this.provider = provider
+		this.outputChannel = outputChannel
 	}
 
-	public processCommand(message: WebSocketMessage, client: ws.WebSocket): void {
+	public async processCommand(message: WebSocketMessage, client: ws.WebSocket): Promise<void> {
 		try {
 			// Handle all parts of the message without early returns
 			if (message.message) {
-				this.handleChatMessage(message.message, client)
+				await this.handleChatMessage(message.message, client)
 			}
 
 			if (message.command) {
-				this.handlePluginCommand(message.command, message.value, client)
+				await this.handlePluginCommand(message.command, message.value, client)
 			}
 
 			// Only error if no recognized parameters
@@ -29,6 +33,7 @@ export class CommandHandler {
 				this.sendResponse(client, "error")
 			}
 		} catch (error) {
+			this.outputChannel.appendLine(`[processCommand] Error: ${error}`)
 			this.sendResponse(client, "error")
 		}
 	}
@@ -49,19 +54,27 @@ export class CommandHandler {
 
 	private async handlePluginCommand(command: string, value: any, client: ws.WebSocket): Promise<void> {
 		try {
+			this.outputChannel.appendLine(`[handlePluginCommand] Processing command: ${command}`)
 			switch (command) {
 				case "requestState":
 					return this.handleStateCommand(client)
 				case "alwaysAllowReadOnly":
 				case "alwaysAllowExecute":
 				case "alwaysAllowBrowser":
-					await this.handleSettingCommand(command as AutoApproveSettings, value, client)
-					break
+					this.outputChannel.appendLine(
+						`[handlePluginCommand] Handling setting command: ${command}, value: ${value}`,
+					)
+					try {
+						return this.handleSettingCommand(command as AutoApproveSettings, value, client)
+					} catch (error) {
+						this.outputChannel.appendLine(`[handlePluginCommand] Error in handleSettingCommand: ${error}`)
+						throw error // Re-throw to be caught by outer try/catch
+					}
 				case "primaryButtonClick":
 				case "secondaryButtonClick":
-					await this.handleButtonCommand(command as "primaryButtonClick" | "secondaryButtonClick", client)
-					break
+					return this.handleButtonCommand(command as "primaryButtonClick" | "secondaryButtonClick", client)
 				default:
+					this.outputChannel.appendLine(`[handlePluginCommand] Unknown command: ${command}`)
 					this.sendResponse(client, "error")
 			}
 		} catch (error) {
@@ -75,23 +88,29 @@ export class CommandHandler {
 		client: ws.WebSocket,
 	): Promise<void> {
 		try {
+			this.outputChannel.appendLine(`[handleSettingCommand] Setting: ${setting}, Value: ${value}`)
+			this.outputChannel.appendLine(
+				"[handleSettingCommand] Provider: " + (this.provider ? "exists" : "undefined"),
+			)
 			// Get initial state for comparison
 			const initialState = await this.provider.getStateToPostToWebview()
+			this.outputChannel.appendLine("[handleSettingCommand] Initial state: " + JSON.stringify(initialState))
 			const initialValue = initialState[setting]
 
-			// Create a command object that matches vscode.postMessage format
-			const msg: any = { type: setting, bool: value }
-			await this.provider.postMessageToWebview(msg)
+			// Update the state directly
+			await this.provider.updateGlobalState(setting, value)
 
-			// Wait briefly for state to update
-			await new Promise((resolve) => setTimeout(resolve, 100))
-
-			// Verify the setting was updated
+			// Get the new state to verify the update
 			const newState = await this.provider.getStateToPostToWebview()
 			const newValue = newState[setting]
 
+			// Post state update to webview
+			await this.provider.postStateToWebview()
+			this.outputChannel.appendLine("[handleSettingCommand] New state: " + JSON.stringify(newState))
+
 			// Setting should now match requested value and be different from initial value if a change was requested
 			const success = value === newValue && (value === initialValue || initialValue !== newValue)
+			this.outputChannel.appendLine(`[handleSettingCommand] Success: ${success}`)
 			this.sendResponse(client, success ? "success" : "error")
 		} catch (error) {
 			this.sendResponse(client, "error")

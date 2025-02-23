@@ -162,6 +162,7 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 	customModesManager: CustomModesManager
 	websocketEnabled: boolean
 	websocketPort: number
+	private connectionTimestamp: number = 0
 
 	constructor(
 		readonly context: vscode.ExtensionContext,
@@ -178,6 +179,9 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 		this.websocketEnabled = vscode.workspace.getConfiguration("roo-code").get<boolean>("websocket.enabled") ?? true
 		this.websocketPort = vscode.workspace.getConfiguration("roo-code").get<number>("websocket.port") ?? 7800
 		this.websocketServer = websocketServer
+		if (websocketServer) {
+			this.connectionTimestamp = Date.now()
+		}
 
 		// Initialize MCP Hub through the singleton manager
 		McpServerManager.getInstance(this.context, this)
@@ -483,18 +487,42 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 		)
 	}
 
+	private static readonly processedMessageTimestamps = new Set<number>()
+
 	public async postMessageToWebview(message: ExtensionMessage) {
 		await this.view?.webview.postMessage(message)
 
 		if (this.websocketEnabled && this.websocketPort) {
-			if (message.type === "state" && message.state?.clineMessages) {
-				message.state?.clineMessages.forEach((clineMessage) => {
-					if (clineMessage.type === "say") {
-						this.forwardWebSocketMessage(clineMessage)
-					}
-				})
-			} else if (message.type === "partialMessage" && message.partialMessage?.type === "say") {
-				this.forwardWebSocketMessage(message.partialMessage)
+			if (message.type === "partialMessage" && message.partialMessage?.type === "say") {
+				// For partial messages, immediately forward if they're questions
+				if (
+					message.partialMessage.text?.includes("Roo has a question:") ||
+					message.partialMessage.text?.includes("ask_followup_question for")
+				) {
+					// Don't track partial messages in processedMessageTimestamps since they'll be followed by a full message
+					this.forwardWebSocketMessage(message.partialMessage)
+				}
+			} else if (message.type === "state" && message.state?.clineMessages) {
+				// For state updates, only process the most recent message that's newer than our connection
+				const messages = message.state.clineMessages
+					.filter(
+						(msg) =>
+							msg.type === "say" &&
+							msg.ts &&
+							msg.ts > this.connectionTimestamp &&
+							!msg.partial &&
+							(msg.text?.includes("Roo has a question:") ||
+								msg.text?.includes("ask_followup_question for")) &&
+							!ClineProvider.processedMessageTimestamps.has(msg.ts),
+					)
+					.sort((a, b) => (b.ts || 0) - (a.ts || 0))
+
+				// Only take the most recent message if it exists
+				if (messages.length > 0) {
+					const latestMessage = messages[0]
+					ClineProvider.processedMessageTimestamps.add(latestMessage.ts!)
+					this.forwardWebSocketMessage(latestMessage)
+				}
 			}
 		}
 	}
@@ -1618,6 +1646,11 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 	}
 
 	private forwardWebSocketMessage(clineMessage: ClineMessage) {
+		// Skip user feedback messages
+		if (clineMessage.say === "user_feedback" || clineMessage.say === "user_feedback_diff") {
+			return
+		}
+
 		this.outputChannel.appendLine("[ClineProvider] Attempting to forward message:")
 		this.outputChannel.appendLine(JSON.stringify(clineMessage, null, 2))
 
@@ -1626,8 +1659,14 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 		let wsMessagePartial: boolean | undefined
 		let wsStatusType: string | undefined
 
+		// Skip messages that start with ```tool_code
+		if (clineMessage.text?.startsWith("```tool_code")) {
+			return
+		}
+
 		switch (clineMessage.say) {
 			case "text":
+			case "completion_result": // Convert completion_result to regular message
 				wsMessageType = "message"
 				wsMessageText = clineMessage.text
 				wsMessagePartial = clineMessage.partial
@@ -1637,17 +1676,34 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 				wsMessageText = clineMessage.text
 				wsMessagePartial = clineMessage.partial
 				break
-			case "command_output":
 			case "api_req_started":
+				// For API requests, we need to check if it's a question
+				if (clineMessage.text?.includes("Roo has a question:")) {
+					wsMessageType = "question"
+					wsMessageText = clineMessage.text.replace("Roo has a question:", "").trim()
+				} else if (clineMessage.text?.includes("ask_followup_question for")) {
+					wsMessageType = "question"
+					const match = clineMessage.text.match(/ask_followup_question for '(.*?)'/)
+					wsMessageText = match ? match[1] : clineMessage.text
+				} else if (clineMessage.text === "TASK RESUMPTION") {
+					// Skip task resumption messages
+					return
+				} else {
+					wsMessageType = "status"
+					wsStatusType = clineMessage.say
+					// Extract text between square brackets for API requests
+					const match = clineMessage.text?.match(/\[(.*?)\]/)
+					wsMessageText = match ? match[1] : clineMessage.text
+				}
+				wsMessagePartial = clineMessage.partial
+				break
+			case "command_output":
 			case "api_req_failed" as ClineSay:
 			case "api_req_retried":
 			case "api_req_retry_delayed":
 			case "tool":
 			case "tool_error" as ClineSay:
 			case "tool_result" as ClineSay:
-			case "user_feedback":
-			case "user_feedback_diff":
-			case "completion_result":
 			case "task_completed" as ClineSay:
 			case "shell_integration_warning":
 			case "error":
@@ -1673,11 +1729,14 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 				type: wsMessageType,
 				output: wsMessageType === "message" || wsMessageType === "reasoning" ? wsMessageText : undefined,
 				statusType: wsMessageType === "status" ? wsStatusType : undefined,
-				text: wsMessageType === "status" ? wsMessageText : undefined,
-				partial: wsMessagePartial,
+				text: wsMessageType === "status" || wsMessageType === "question" ? wsMessageText : undefined,
+				partial: wsMessagePartial ?? false, // Ensure partial is always defined
 			}
-			const messageJSON = JSON.stringify(webSocketMessage)
-			this.websocketServer?.broadcastMessage(webSocketMessage)
+
+			// Only broadcast if it's not a TASK RESUMPTION message
+			if (!(wsMessageType === "status" && wsMessageText === "TASK RESUMPTION")) {
+				this.websocketServer?.broadcastMessage(webSocketMessage)
+			}
 		}
 	}
 

@@ -4,13 +4,15 @@
 
 - ✅ WebSocket server implementation
 - ✅ Basic command handling structure
-- ✅ Client connection management
+- ✅ Client connection management with Set data structure
 - ✅ Settings UI components added
 - ✅ WebSocket state management structure
-- ✅ Basic JSON message validation
-- ✅ Server logging and error reporting
+- ✅ JSON message validation
+- ✅ Enhanced server logging with dedicated output channel
 - ✅ Local connection handling
-- ✅ Basic command/response flow
+- ✅ Command/response flow
+- ✅ Clean client disconnection
+- ✅ Error handling and reporting
 
 ## What's Left to Fix
 
@@ -22,11 +24,11 @@
     - Port number changes not persisting
     - Note: Not blocking core functionality
 
-2. **Command Handling (In Progress)**
+2. **Message Output (In Progress)**
 
-    - Command validation needs enhancement
-    - Response verification needed
-    - Error handling improvements needed
+    - Message format needs refinement
+    - Display improvements needed
+    - Minor output details to iron out
 
 3. **UI Feedback (Future)**
     - No connection status indicator
@@ -37,8 +39,9 @@
 
 - ✅ Server startup/shutdown tests
 - ✅ Basic client connection tests
-- ✅ Command execution tests (complete)
-- ✅ Message validation tests (complete)
+- ✅ Command execution tests
+- ✅ Message validation tests
+- ✅ Error handling tests
 - 🔄 Settings UI tests (postponed)
 
 ### Documentation
@@ -46,7 +49,8 @@
 - ✅ Basic API documentation
 - ✅ WebSocket server setup docs
 - ✅ Message format documentation
-- ✅ Command handling documentation (complete)
+- ✅ Command handling documentation
+- ✅ Output channel documentation
 - 🔄 Settings UI documentation (postponed)
 
 ## Progress Status
@@ -54,19 +58,21 @@
 ### Overall Status
 
 ✅ Core WebSocket Server
-✅ Basic Command Handling
+✅ Command Handling
+✅ Client Connection Management
+✅ Output Channel Separation
 🟢 Settings UI Components
-✅ Command Validation (Complete)
 🔴 Settings Persistence (Known Issue)
+🔄 Message Output Format (In Progress)
 
 ### Current Focus
 
 1. **Primary Objectives**
 
-    - Testing WebSocket communication
-    - Implementing proper command handling
-    - Ensuring correct message flow
-    - Adding command response verification
+    - Refining message output format
+    - Improving client message display
+    - Enhancing error messages
+    - Fine-tuning output details
 
 2. **Postponed Items**
     - Settings persistence fix
@@ -77,10 +83,13 @@
 ### Resolved Issues
 
 - ✅ WebSocket server implementation
-- ✅ Basic command handling structure
+- ✅ Command handling structure
 - ✅ Settings UI components
 - ✅ State management structure
 - ✅ Client connection handling
+- ✅ Output channel separation
+- ✅ Error handling and reporting
+- ✅ Client tracking and cleanup
 
 ### Known Issues
 
@@ -90,19 +99,19 @@
     - No validation for port number input
     - Limited error feedback
 
-2. **Command Handling**
-    - Basic validation only
-    - Limited error handling
-    - No command verification
+2. **Message Output**
+    - Format needs refinement
+    - Display improvements needed
+    - Minor details to iron out
 
 ### Next Actions
 
 1. **Immediate**
 
-    - Test WebSocket communication
-    - Implement command validation
-    - Add response verification
-    - Enhance error handling
+    - Refine message output format
+    - Improve client message display
+    - Enhance error messages
+    - Fine-tune output details
 
 2. **Future**
     - Fix settings persistence
@@ -116,12 +125,15 @@
 - ✅ Settings UI components - Complete
 - ✅ Command handling - Complete
 - ✅ Testing & Verification - Complete
+- ✅ Output Channel Separation - Complete
+- ✅ Error Handling - Complete
+- 🔄 Message Output Format - In Progress
 - 🔄 Settings Persistence - Postponed
-- 🔄 UI Improvements - Postponed
 
 ## Notes
 
 - Settings persistence is a known issue but not blocking
-- Focus remains on core WebSocket functionality
-- UI improvements will be addressed in future updates
-- Command format has been simplified to match current implementation
+- Core WebSocket functionality working well
+- Logging separation improves debugging
+- Client tracking and cleanup working effectively
+- Message output format being refined

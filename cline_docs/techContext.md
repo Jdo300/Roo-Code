@@ -7,16 +7,24 @@
 - ✅ Basic WebSocket server implementation in `websocket-server.ts`
 - ✅ Command handling structure in `command-handler.ts`
 - ✅ Settings UI components in `SettingsView.tsx`
-- ✅ Testing WebSocket communication and command handling
+- ✅ Dedicated output channel for WebSocket logs
+- ✅ Client tracking and connection management
+- 🔄 Message output format refinement
 - 🔄 Settings persistence (postponed)
 
 ### Known Technical Issues
 
 1. **Settings Persistence**
+
     - Issue: WebSocket settings (enabled state and port) not persisting
     - Location: `webview-ui/src/components/settings/SettingsView.tsx`
     - Status: Identified but postponed
     - Note: Does not affect core WebSocket functionality
+
+2. **Message Output**
+    - Issue: Message format needs refinement
+    - Status: Currently addressing
+    - Note: Basic functionality working, improving display and format
 
 ## WebSocket API Entry Points
 
@@ -25,24 +33,15 @@
 - **Default Port:** 7800 (configurable via VSCode settings)
 - **Settings Path:** `webview-ui/src/components/settings/SettingsView.tsx`
 - **State Management:** `webview-ui/src/context/ExtensionStateContext.tsx`
+- **Output Channels:**
+    - "Roo-Code WebSocket" - WebSocket server logs
+    - "Roo-Code" - Command handling logs
 
-### Commands
+### Message Types
 
-#### Chat Message
+The WebSocket server uses a simplified JSON format for streaming messages to clients:
 
-```json
-{
-	"message": "your chat message here"
-}
-```
-
-#### WebSocket Message Format
-
-The WebSocket server now uses a simplified JSON format for streaming messages to clients. There are three main message types: `"message"`, `"reasoning"`, and `"status"`.
-
-##### 1. `"message"` Type (Chat Messages)
-
-For general chat messages sent by Cline:
+#### 1. Chat Messages
 
 ```json
 {
@@ -52,13 +51,7 @@ For general chat messages sent by Cline:
 }
 ```
 
-- `"type"`: Always `"message"` for chat messages.
-- `"output"`: The actual text content of the chat message.
-- `"partial"`: Boolean indicating if this is a partial chunk of a streaming message (`true`) or a complete message (`false`).
-
-##### 2. `"reasoning"` Type (Cline's Thoughts)
-
-For messages representing Cline's reasoning or internal thoughts:
+#### 2. Reasoning Messages
 
 ```json
 {
@@ -68,27 +61,18 @@ For messages representing Cline's reasoning or internal thoughts:
 }
 ```
 
-- `"type"`: Always `"reasoning"` for Cline's thought process messages.
-- `"output"`: The text content of Cline's reasoning.
-- `"partial"`: Boolean indicating if this is a partial chunk of streaming reasoning (`true`) or complete reasoning (`false`).
-
-##### 3. `"status"` Type (Status Updates)
-
-For status updates related to various operations (command output, API requests, tool execution, errors, etc.):
+#### 3. Status Updates
 
 ```json
 {
   "type": "status",
-  "statusType": "command_output", // Example: "command_output", "api_req_started", "tool_result", "error", etc.
-  "text": "Optional text associated with the status (e.g., command output)", // Optional
-  "partial": true/false // Optional, only if the status message itself can be streamed
+  "statusType": "command_output",
+  "text": "Optional status text",
+  "partial": true/false
 }
 ```
 
-- `"type"`: Always `"status"` for status update messages.
-- `"statusType"`: A string indicating the specific type of status (e.g., `"command_output"`, `"api_req_started"`, `"tool_result"`, `"error"`, etc.). Refer to the `ClineSay` type in `src/shared/ExtensionMessage.ts` for a comprehensive list of possible status types.
-- `"text"`: Optional text content associated with the status update (e.g., the output of a command, error details).
-- `"partial"`: Optional boolean, used only if the status message itself is streamed in chunks.
+### Client Commands
 
 #### Chat Message
 
@@ -194,43 +178,51 @@ webview-ui/
 
 ### Logging
 
-- VSCode output channel ("Roo-Code WebSocket")
-- WebSocket server events
+- Dedicated "Roo-Code WebSocket" output channel for server logs
+- Main "Roo-Code" channel for command handling
+- WebSocket server events and client tracking
 - Command execution tracking
+- Connection statistics
 
 ### Error Handling
 
-- Connection errors with automatic retries
-- Message parsing errors
+- Connection errors with automatic cleanup
+- Message parsing errors with client feedback
 - Command execution errors
+- Client tracking and cleanup
+- Clean server shutdown
 
 ### Diagnostics
 
 - Connection status tracking
-- Client connection events
+- Client connection events and statistics
 - Command/response flow monitoring
+- Separate log channels for better debugging
 
 ## Future Technical Enhancements
 
-1. **Settings Persistence**
+1. **Message Output Format**
 
-    - Implement proper state persistence for WebSocket settings
+    - Refine message format for better readability
+    - Improve client message display
+    - Enhance error messages
+    - Fine-tune output details
+
+2. **Settings Persistence**
+
+    - Implement proper state persistence
     - Add validation for port number input
     - Add error handling for invalid settings
 
-2. **UI Improvements**
-
+3. **UI Improvements**
     - Add connection status indicator
     - Improve error feedback
     - Add port validation
 
-3. **Command Handling**
-    - Enhance verification for command responses
-    - Improve error handling
-    - Add command validation
-
 ## Notes
 
-- Settings persistence is a known issue but not blocking for core functionality
-- Focus remains on WebSocket communication and command handling
-- UI improvements will be addressed in future updates
+- Settings persistence is a known issue but not blocking
+- Core WebSocket functionality working well
+- Logging separation improves debugging
+- Client tracking and cleanup working effectively
+- Message output format being refined

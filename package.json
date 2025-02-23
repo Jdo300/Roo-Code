@@ -269,6 +269,20 @@
 						}
 					},
 					"description": "Settings for VSCode Language Model API"
+				},
+				"roo-code.websocket.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Enable WebSocket server for external client connections",
+					"order": 1
+				},
+				"roo-code.websocket.port": {
+					"type": "number",
+					"default": 7800,
+					"minimum": 1024,
+					"maximum": 65535,
+					"description": "Port number for WebSocket server (must be between 1024-65535)",
+					"order": 2
 				}
 			}
 		}

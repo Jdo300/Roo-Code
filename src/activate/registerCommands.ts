@@ -51,7 +51,7 @@ const openClineInNewTab = async ({ context, outputChannel }: Omit<RegisterComman
 	// deserialize cached webview, but since we use retainContextWhenHidden, we
 	// don't need to use that event).
 	// https://github.com/microsoft/vscode-extension-samples/blob/main/webview-sample/src/extension.ts
-	const tabProvider = new ClineProvider(context, outputChannel)
+	const tabProvider = new ClineProvider(context, outputChannel, undefined)
 	// const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined
 	const lastCol = Math.max(...vscode.window.visibleTextEditors.map((editor) => editor.viewColumn || 0))
 

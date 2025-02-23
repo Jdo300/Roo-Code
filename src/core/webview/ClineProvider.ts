@@ -18,7 +18,7 @@ import WorkspaceTracker from "../../integrations/workspace/WorkspaceTracker"
 import { McpHub } from "../../services/mcp/McpHub"
 import { ApiConfiguration, ApiProvider, ModelInfo } from "../../shared/api"
 import { findLast } from "../../shared/array"
-import { ApiConfigMeta, ExtensionMessage } from "../../shared/ExtensionMessage"
+import { ApiConfigMeta, ExtensionMessage, ClineMessage, ClineSay } from "../../shared/ExtensionMessage"
 import { HistoryItem } from "../../shared/HistoryItem"
 import { checkoutDiffPayloadSchema, checkoutRestorePayloadSchema, WebviewMessage } from "../../shared/WebviewMessage"
 import { Mode, CustomModePrompts, PromptComponent, defaultModeSlug } from "../../shared/modes"
@@ -39,6 +39,10 @@ import { CustomSupportPrompts, supportPrompt } from "../../shared/support-prompt
 
 import { ACTION_NAMES } from "../CodeActionProvider"
 import { McpServerManager } from "../../services/mcp/McpServerManager"
+
+import { WebSocketMessage, WebSocketMessageType } from "../../server/types"
+import { WebSocketServer } from "../../server/websocket-server"
+import * as ws from "ws"
 
 /*
 https://github.com/microsoft/vscode-webview-ui-toolkit-samples/blob/main/default/weather-webview/src/providers/WeatherViewProvider.ts
@@ -145,6 +149,7 @@ export const GlobalFileNames = {
 export class ClineProvider implements vscode.WebviewViewProvider {
 	public static readonly sideBarId = "roo-cline.SidebarProvider" // used in package.json as the view's id. This value cannot be changed due to how vscode caches views based on their id, and updating the id would break existing instances of the extension.
 	public static readonly tabPanelId = "roo-cline.TabPanelProvider"
+	private websocketServer?: WebSocketServer
 	private static activeInstances: Set<ClineProvider> = new Set()
 	private disposables: vscode.Disposable[] = []
 	private view?: vscode.WebviewView | vscode.WebviewPanel
@@ -161,6 +166,7 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 	constructor(
 		readonly context: vscode.ExtensionContext,
 		private readonly outputChannel: vscode.OutputChannel,
+		websocketServer: WebSocketServer | undefined,
 	) {
 		this.outputChannel.appendLine("ClineProvider instantiated")
 		ClineProvider.activeInstances.add(this)
@@ -169,8 +175,9 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 		this.customModesManager = new CustomModesManager(this.context, async () => {
 			await this.postStateToWebview()
 		})
-		this.websocketEnabled = vscode.workspace.getConfiguration("roo-code").get<boolean>("websocket.enabled") || false
-		this.websocketPort = vscode.workspace.getConfiguration("roo-code").get<number>("websocket.port") || 7800
+		this.websocketEnabled = vscode.workspace.getConfiguration("roo-code").get<boolean>("websocket.enabled") ?? true
+		this.websocketPort = vscode.workspace.getConfiguration("roo-code").get<number>("websocket.port") ?? 7800
+		this.websocketServer = websocketServer
 
 		// Initialize MCP Hub through the singleton manager
 		McpServerManager.getInstance(this.context, this)
@@ -189,23 +196,35 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 	*/
 	async dispose() {
 		this.outputChannel.appendLine("Disposing ClineProvider...")
+
+		// Clean up WebSocket resources first
+		if (this.websocketServer) {
+			this.outputChannel.appendLine("Stopping WebSocket server...")
+			this.websocketServer.stop()
+			this.websocketServer = undefined
+		}
+
 		await this.clearTask()
 		this.outputChannel.appendLine("Cleared task")
+
 		if (this.view && "dispose" in this.view) {
 			this.view.dispose()
 			this.outputChannel.appendLine("Disposed webview")
 		}
+
 		while (this.disposables.length) {
 			const x = this.disposables.pop()
 			if (x) {
 				x.dispose()
 			}
 		}
+
 		this.workspaceTracker?.dispose()
 		this.workspaceTracker = undefined
 		this.mcpHub?.dispose()
 		this.mcpHub = undefined
 		this.customModesManager?.dispose()
+
 		this.outputChannel.appendLine("Disposed all disposables")
 		ClineProvider.activeInstances.delete(this)
 
@@ -466,6 +485,18 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 
 	public async postMessageToWebview(message: ExtensionMessage) {
 		await this.view?.webview.postMessage(message)
+
+		if (this.websocketEnabled && this.websocketPort) {
+			if (message.type === "state" && message.state?.clineMessages) {
+				message.state?.clineMessages.forEach((clineMessage) => {
+					if (clineMessage.type === "say") {
+						this.forwardWebSocketMessage(clineMessage)
+					}
+				})
+			} else if (message.type === "partialMessage" && message.partialMessage?.type === "say") {
+				this.forwardWebSocketMessage(message.partialMessage)
+			}
+		}
 	}
 
 	private async getHMRHtmlContent(webview: vscode.Webview): Promise<string> {
@@ -1583,6 +1614,70 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 				enableMcpServerCreation,
 			)
 			return systemPrompt
+		}
+	}
+
+	private forwardWebSocketMessage(clineMessage: ClineMessage) {
+		this.outputChannel.appendLine("[ClineProvider] Attempting to forward message:")
+		this.outputChannel.appendLine(JSON.stringify(clineMessage, null, 2))
+
+		let wsMessageType: WebSocketMessageType | undefined
+		let wsMessageText: string | undefined
+		let wsMessagePartial: boolean | undefined
+		let wsStatusType: string | undefined
+
+		switch (clineMessage.say) {
+			case "text":
+				wsMessageType = "message"
+				wsMessageText = clineMessage.text
+				wsMessagePartial = clineMessage.partial
+				break
+			case "reasoning":
+				wsMessageType = "reasoning"
+				wsMessageText = clineMessage.text
+				wsMessagePartial = clineMessage.partial
+				break
+			case "command_output":
+			case "api_req_started":
+			case "api_req_failed" as ClineSay:
+			case "api_req_retried":
+			case "api_req_retry_delayed":
+			case "tool":
+			case "tool_error" as ClineSay:
+			case "tool_result" as ClineSay:
+			case "user_feedback":
+			case "user_feedback_diff":
+			case "completion_result":
+			case "task_completed" as ClineSay:
+			case "shell_integration_warning":
+			case "error":
+			case "checkpoint_saved":
+			case "api_req_deleted":
+			case "mcp_server_request_started":
+			case "mcp_server_response":
+			case "browser_action_result":
+			case "browser_action":
+			case "browser_action_launch" as ClineSay:
+			case "inspect_site_result" as ClineSay:
+				wsMessageType = "status"
+				wsStatusType = clineMessage.say
+				wsMessageText = clineMessage.text
+				wsMessagePartial = clineMessage.partial
+				break
+			default:
+				wsMessageType = undefined // Skip other message types for now
+		}
+
+		if (wsMessageType) {
+			const webSocketMessage: WebSocketMessage = {
+				type: wsMessageType,
+				output: wsMessageType === "message" || wsMessageType === "reasoning" ? wsMessageText : undefined,
+				statusType: wsMessageType === "status" ? wsStatusType : undefined,
+				text: wsMessageType === "status" ? wsMessageText : undefined,
+				partial: wsMessagePartial,
+			}
+			const messageJSON = JSON.stringify(webSocketMessage)
+			this.websocketServer?.broadcastMessage(webSocketMessage)
 		}
 	}
 

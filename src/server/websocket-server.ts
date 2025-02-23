@@ -6,77 +6,70 @@ import { CommandHandler } from "./command-handler"
 import { ClineProvider } from "../core/webview/ClineProvider"
 
 export class WebSocketServer {
-	private wss: ws.WebSocketServer | null = null
-	private config = getServerConfig()
-	private provider: ClineProvider | null = null
-	private commandHandler: CommandHandler
-	private outputChannel: vscode.OutputChannel
+	private wss?: ws.WebSocketServer
+	private commandHandler?: CommandHandler
+	private readonly mainOutputChannel: vscode.OutputChannel
+	private readonly wsOutputChannel: vscode.OutputChannel
+	private provider?: ClineProvider
+	private clients: Set<ws.WebSocket> = new Set()
 
-	constructor(provider: ClineProvider | null) {
-		this.config = getServerConfig()
+	constructor(
+		port: number,
+		provider: ClineProvider | undefined,
+		outputChannel: vscode.OutputChannel,
+		websocketOutputChannel: vscode.OutputChannel,
+	) {
+		this.mainOutputChannel = outputChannel
+		this.wsOutputChannel = websocketOutputChannel
 		this.provider = provider
-		this.outputChannel = vscode.window.createOutputChannel("Roo-Code WebSocket")
-		this.outputChannel.show() // Show output channel immediately
-		this.commandHandler = new CommandHandler(provider as ClineProvider, this.outputChannel) // provider can be null initially but commandHandler needs ClineProvider
+		if (provider) {
+			this.commandHandler = new CommandHandler(provider, this.mainOutputChannel)
+		}
 	}
 
 	public setProvider(provider: ClineProvider): void {
 		this.provider = provider
-		this.commandHandler = new CommandHandler(provider, this.outputChannel)
+		this.commandHandler = new CommandHandler(provider, this.mainOutputChannel)
 	}
 
 	public async start(): Promise<void> {
-		this.outputChannel.appendLine("Attempting to start WebSocket server...")
+		this.wsOutputChannel.appendLine("[WebSocket] Attempting to start server...")
 
 		if (this.wss) {
-			this.outputChannel.appendLine("WebSocket server is already running.")
-			vscode.window.showWarningMessage("WebSocket server is already running.")
+			this.wsOutputChannel.appendLine("[WebSocket] Server is already running")
 			return
 		}
 
 		const config = getServerConfig()
-		this.outputChannel.appendLine(`Current config: ${JSON.stringify(config)}`)
+		this.wsOutputChannel.appendLine(`[WebSocket] Config: ${JSON.stringify(config)}`)
 
 		if (!config.enabled) {
-			this.outputChannel.appendLine("WebSocket server is disabled in settings.")
-			vscode.window.showInformationMessage("WebSocket server is disabled in settings.")
+			this.wsOutputChannel.appendLine("[WebSocket] Server is disabled in settings")
 			return
 		}
 
 		try {
-			this.wss = new ws.WebSocketServer({ port: config.port }, () => {
-				this.outputChannel.appendLine(`WebSocket server initialization callback executed`)
-			})
-			this.outputChannel.appendLine(`Created WebSocket server instance on port ${config.port}`)
+			this.wss = new ws.WebSocketServer({ port: config.port })
+			this.wsOutputChannel.appendLine(`[WebSocket] Created server on port ${config.port}`)
 
 			this.wss.on("connection", (ws) => {
-				this.outputChannel.appendLine("Client connected to WebSocket server")
-				vscode.window.showInformationMessage("WebSocket client connected")
-
-				ws.on("message", async (message) => {
-					await this.handleMessage(message, ws)
-				})
-
-				ws.on("close", () => {
-					this.outputChannel.appendLine("Client disconnected from WebSocket server")
-					vscode.window.showInformationMessage("WebSocket client disconnected")
-				})
+				this.handleNewClient(ws)
 			})
 
 			this.wss.on("listening", () => {
-				this.outputChannel.appendLine(`WebSocket server started and listening on port ${config.port}`)
+				this.wsOutputChannel.appendLine(`[WebSocket] Server listening on port ${config.port}`)
 				vscode.window.showInformationMessage(`WebSocket server started on port ${config.port}`)
 			})
 
 			this.wss.on("error", (error) => {
-				this.outputChannel.appendLine(`WebSocket server error: ${error.message}`)
+				this.wsOutputChannel.appendLine(`[WebSocket] Error: ${error.message}`)
 				vscode.window.showErrorMessage(`WebSocket server error: ${error.message}`)
 			})
 
-			this.outputChannel.show()
+			this.wsOutputChannel.show()
 		} catch (error) {
-			this.outputChannel.appendLine(
-				`Failed to start WebSocket server: ${error instanceof Error ? error.message : String(error)}`,
+			this.wsOutputChannel.appendLine(
+				`[WebSocket] Failed to start server: ${error instanceof Error ? error.message : String(error)}`,
 			)
 			vscode.window.showErrorMessage(
 				`Failed to start WebSocket server: ${error instanceof Error ? error.message : String(error)}`,
@@ -84,62 +77,124 @@ export class WebSocketServer {
 		}
 	}
 
+	private handleNewClient(ws: ws.WebSocket): void {
+		this.clients.add(ws)
+		this.wsOutputChannel.appendLine(`[WebSocket] Client connected (${this.clients.size} total)`)
+		vscode.window.showInformationMessage("WebSocket client connected")
+
+		ws.on("message", async (message) => {
+			await this.handleMessage(message, ws)
+		})
+
+		ws.on("close", () => {
+			this.clients.delete(ws)
+			this.wsOutputChannel.appendLine(`[WebSocket] Client disconnected (${this.clients.size} remaining)`)
+		})
+
+		ws.on("error", (error) => {
+			this.wsOutputChannel.appendLine(`[WebSocket] Client error: ${error.message}`)
+			this.clients.delete(ws)
+		})
+	}
+
 	public stop(): void {
-		this.outputChannel.appendLine("Attempting to stop WebSocket server...")
+		this.wsOutputChannel.appendLine("[WebSocket] Attempting to stop server...")
 
 		if (!this.wss) {
-			this.outputChannel.appendLine("WebSocket server is not running.")
-			vscode.window.showWarningMessage("WebSocket server is not running.")
+			this.wsOutputChannel.appendLine("[WebSocket] Server is not running")
 			return
 		}
 
+		// Close all client connections first
+		this.clients.forEach((client) => {
+			try {
+				client.close()
+			} catch (error) {
+				this.wsOutputChannel.appendLine(`[WebSocket] Error closing client: ${error}`)
+			}
+		})
+		this.clients.clear()
+
+		// Then close the server
 		this.wss.close(() => {
-			this.outputChannel.appendLine("WebSocket server stopped")
+			this.wsOutputChannel.appendLine("[WebSocket] Server stopped")
 			vscode.window.showInformationMessage("WebSocket server stopped")
 		})
-		this.wss = null
+		this.wss = undefined
+	}
+
+	public broadcastMessage(message: WebSocketMessage): void {
+		this.wsOutputChannel.appendLine("[WebSocket] Broadcasting message:")
+		this.wsOutputChannel.appendLine(JSON.stringify(message, null, 2))
+
+		if (!this.wss || this.clients.size === 0) {
+			this.wsOutputChannel.appendLine("[WebSocket] No clients connected")
+			return
+		}
+
+		const messageJSON = JSON.stringify(message)
+		let sentCount = 0
+
+		this.clients.forEach((client) => {
+			try {
+				if (client.readyState === ws.WebSocket.OPEN) {
+					client.send(messageJSON)
+					sentCount++
+				}
+			} catch (error) {
+				this.wsOutputChannel.appendLine(`[WebSocket] Error sending to client: ${error}`)
+				this.clients.delete(client)
+			}
+		})
+
+		this.wsOutputChannel.appendLine(`[WebSocket] Message sent to ${sentCount} clients`)
 	}
 
 	private async handleMessage(message: ws.RawData, client: ws.WebSocket): Promise<void> {
 		try {
-			const parsedMessage: WebSocketMessage = JSON.parse(message.toString())
-			this.outputChannel.appendLine(`Received message: ${JSON.stringify(parsedMessage)}`)
-			this.outputChannel.show() // Show output channel when receiving messages
+			const parsedMessage = JSON.parse(message.toString()) as WebSocketMessage
+			this.wsOutputChannel.appendLine(`[WebSocket] Received: ${JSON.stringify(parsedMessage)}`)
+			this.wsOutputChannel.show()
 			await this.processMessage(parsedMessage, client)
 		} catch (error) {
-			this.outputChannel.appendLine(
-				`WebSocket message parsing error: ${error instanceof Error ? error.message : String(error)}`,
+			this.wsOutputChannel.appendLine(
+				`[WebSocket] Message parsing error: ${error instanceof Error ? error.message : String(error)}`,
 			)
-			vscode.window.showErrorMessage(
-				`WebSocket message parsing error: ${error instanceof Error ? error.message : String(error)}`,
-			)
+			try {
+				client.send(JSON.stringify({ response: "error", error: "Invalid message format" }))
+			} catch (sendError) {
+				this.wsOutputChannel.appendLine(`[WebSocket] Error sending error response: ${sendError}`)
+			}
 		}
 	}
 
 	private async processMessage(message: WebSocketMessage, client: ws.WebSocket): Promise<void> {
 		try {
-			if (!this.commandHandler) {
-				throw new Error("CommandHandler not initialized")
+			if (!this.commandHandler || !this.provider) {
+				throw new Error("WebSocket server not properly initialized")
 			}
 			await this.commandHandler.processCommand(message, client)
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
-			this.outputChannel.appendLine(`Error processing message: ${errorMessage}`)
-			vscode.window.showErrorMessage(`Error processing message: ${errorMessage}`)
+			this.wsOutputChannel.appendLine(`[WebSocket] Processing error: ${errorMessage}`)
+			try {
+				client.send(JSON.stringify({ response: "error", error: errorMessage }))
+			} catch (sendError) {
+				this.wsOutputChannel.appendLine(`[WebSocket] Error sending error response: ${sendError}`)
+			}
 		}
 	}
 
 	public updateConfig(): void {
 		const newConfig = getServerConfig()
-		this.outputChannel.appendLine(`Updating config to: ${JSON.stringify(newConfig)}`)
-		this.config = newConfig
+		this.wsOutputChannel.appendLine(`[WebSocket] Updating config: ${JSON.stringify(newConfig)}`)
 		if (this.wss) {
 			this.restart()
 		}
 	}
 
 	private async restart(): Promise<void> {
-		this.outputChannel.appendLine("Restarting WebSocket server...")
+		this.wsOutputChannel.appendLine("[WebSocket] Restarting server...")
 		if (this.wss) {
 			this.stop()
 			await this.start()

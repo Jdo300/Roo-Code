@@ -7,7 +7,9 @@ import { CodeActionProvider } from "./core/CodeActionProvider"
 import { DIFF_VIEW_URI_SCHEME } from "./integrations/editor/DiffViewProvider"
 import { handleUri, registerCommands, registerCodeActions, registerTerminalActions } from "./activate"
 import { McpServerManager } from "./services/mcp/McpServerManager"
-import { WebSocketServer } from "./server/websocket-server" // Import WebSocketServer
+import { WebSocketServer } from "./server/websocket-server"
+import { registerConfigurationWatcher } from "./server/config"
+import type { WebSocketServerConfig } from "./server/types"
 
 /**
  * Built using https://github.com/microsoft/vscode-webview-ui-toolkit
@@ -18,6 +20,7 @@ import { WebSocketServer } from "./server/websocket-server" // Import WebSocketS
  */
 
 let outputChannel: vscode.OutputChannel
+let websocketOutputChannel: vscode.OutputChannel // Dedicated WebSocket output channel
 let extensionContext: vscode.ExtensionContext
 
 // This method is called when your extension is activated.
@@ -25,7 +28,8 @@ let extensionContext: vscode.ExtensionContext
 export function activate(context: vscode.ExtensionContext) {
 	extensionContext = context
 	outputChannel = vscode.window.createOutputChannel("Roo-Code")
-	context.subscriptions.push(outputChannel)
+	websocketOutputChannel = vscode.window.createOutputChannel("Roo-Code WebSocket") // Create dedicated WebSocket output channel
+	context.subscriptions.push(outputChannel, websocketOutputChannel)
 	outputChannel.appendLine("Roo-Code extension activated")
 
 	// Get default commands from configuration.
@@ -40,7 +44,13 @@ export function activate(context: vscode.ExtensionContext) {
 	const websocketEnabled = vscode.workspace.getConfiguration("roo-code").get<boolean>("websocket.enabled") || false
 	const websocketPort = vscode.workspace.getConfiguration("roo-code").get<number>("websocket.port") || 7800
 
-	const sidebarProvider = new ClineProvider(context, outputChannel)
+	// Initialize WebSocket server with config
+	const webSocketServer = new WebSocketServer(websocketPort, undefined, outputChannel, websocketOutputChannel)
+
+	const sidebarProvider = new ClineProvider(context, outputChannel, webSocketServer)
+
+	// Update WebSocket server with provider reference
+	webSocketServer.setProvider(sidebarProvider)
 
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(ClineProvider.sideBarId, sidebarProvider, {
@@ -48,12 +58,22 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	)
 
-	const webSocketServer = new WebSocketServer(sidebarProvider) // Instantiate WebSocketServer
-	webSocketServer.start() // Start WebSocketServer
-
-	context.subscriptions.push({
-		dispose: () => webSocketServer.stop(), // Dispose WebSocketServer on extension deactivation
+	// Register WebSocket configuration watcher
+	const configWatcher = registerConfigurationWatcher((newConfig) => {
+		outputChannel.appendLine(`[WebSocket] Configuration changed: ${JSON.stringify(newConfig)}`)
+		if (!newConfig.enabled) {
+			webSocketServer.stop()
+		} else {
+			webSocketServer.updateConfig()
+		}
 	})
+
+	context.subscriptions.push(configWatcher, { dispose: () => webSocketServer.stop() })
+
+	// Start server if enabled in settings
+	if (websocketEnabled) {
+		webSocketServer.start()
+	}
 
 	registerCommands({ context, outputChannel, provider: sidebarProvider })
 

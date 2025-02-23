@@ -1,7 +1,7 @@
 import * as ws from "ws"
 import { ClineProvider } from "../core/webview/ClineProvider"
 import { ExtensionMessage, ExtensionState } from "../shared/ExtensionMessage"
-import { WebSocketMessage, WebSocketCommand } from "./types"
+import { WebSocketMessage } from "./types"
 
 // Types for auto-approve settings
 type AutoApproveSettings = "alwaysAllowReadOnly" | "alwaysAllowExecute" | "alwaysAllowBrowser"
@@ -18,18 +18,14 @@ export class CommandHandler {
 	}
 
 	public async processCommand(message: WebSocketMessage, client: ws.WebSocket): Promise<void> {
+		let parsedMessage: WebSocketMessage
 		try {
-			// Handle all parts of the message without early returns
-			if (message.message) {
-				await this.handleChatMessage(message.message, client)
-			}
-
-			if (message.command) {
-				await this.handlePluginCommand(message.command, message.value, client)
-			}
-
-			// Only error if no recognized parameters
-			if (!message.message && !message.command) {
+			parsedMessage = message
+			if (parsedMessage.type === "message") {
+				await this.handleChatMessage(parsedMessage.output || "", client)
+			} else if (parsedMessage.type === "status") {
+				await this.handlePluginCommand(parsedMessage.statusType ?? "", parsedMessage.text ?? "", client) // Using text for value for now - may need to adjust
+			} else {
 				this.sendResponse(client, "error")
 			}
 		} catch (error) {

@@ -23,7 +23,7 @@ const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]
 }
 
 const App = () => {
-	const { didHydrateState, showWelcome, shouldShowAnnouncement } = useExtensionState()
+	const { didHydrateState, showWelcome, shouldShowAnnouncement, setExtensionState } = useExtensionState()
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
 	const [tab, setTab] = useState<Tab>("chat")
 	const settingsRef = useRef<SettingsViewRef>(null)
@@ -52,7 +52,7 @@ const App = () => {
 				}
 			}
 		},
-		[switchTab],
+		[switchTab, setExtensionState],
 	)
 
 	useEvent("message", onMessage)

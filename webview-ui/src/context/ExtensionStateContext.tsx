@@ -26,6 +26,7 @@ export interface ExtensionStateContextType extends ExtensionState {
 	didHydrateState: boolean
 	showWelcome: boolean
 	theme: any
+	setExtensionState: (state: ExtensionState) => void
 	glamaModels: Record<string, ModelInfo>
 	requestyModels: Record<string, ModelInfo>
 	openRouterModels: Record<string, ModelInfo>
@@ -270,6 +271,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		didHydrateState,
 		showWelcome,
 		theme,
+		setExtensionState: (newState: ExtensionState) => setState((prevState) => ({ ...prevState, ...newState })),
 		glamaModels,
 		requestyModels,
 		openRouterModels,

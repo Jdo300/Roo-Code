@@ -269,7 +269,11 @@ describe("Cline", () => {
 		}
 
 		// Setup mock provider with output channel
-		mockProvider = new ClineProvider(mockExtensionContext, mockOutputChannel) as jest.Mocked<ClineProvider>
+		mockProvider = new ClineProvider(
+			mockExtensionContext,
+			mockOutputChannel,
+			undefined,
+		) as jest.Mocked<ClineProvider>
 
 		// Setup mock API configuration
 		mockApiConfig = {

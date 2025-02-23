@@ -277,7 +277,7 @@ describe("ClineProvider", () => {
 			}),
 		} as unknown as vscode.WebviewView
 
-		provider = new ClineProvider(mockContext, mockOutputChannel)
+		provider = new ClineProvider(mockContext, mockOutputChannel, undefined)
 
 		// @ts-ignore - Accessing private property for testing.
 		provider.customModesManager = mockCustomModesManager
@@ -306,6 +306,7 @@ describe("ClineProvider", () => {
 		provider = new ClineProvider(
 			{ ...mockContext, extensionMode: vscode.ExtensionMode.Development },
 			mockOutputChannel,
+			undefined,
 		)
 		;(axios.get as jest.Mock).mockRejectedValueOnce(new Error("Network error"))
 
@@ -733,7 +734,7 @@ describe("ClineProvider", () => {
 		} as unknown as vscode.ExtensionContext
 
 		// Create new provider with updated mock context
-		provider = new ClineProvider(mockContext, mockOutputChannel)
+		provider = new ClineProvider(mockContext, mockOutputChannel, undefined)
 		await provider.resolveWebviewView(mockWebviewView)
 		const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as jest.Mock).mock.calls[0][0]
 

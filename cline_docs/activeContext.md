@@ -26,6 +26,7 @@
 
 1. **Primary Focus (Current Sprint)**
 
+    - ✅ Implement WebSocket streaming for chat and status messages
     - Test and verify WebSocket communication
     - Implement proper command handling
     - Ensure correct message flow
@@ -75,6 +76,7 @@
 - Added WebSocket settings UI components
 - Implemented TypeScript interfaces for WebSocket state
 - Added setter functions for WebSocket settings
+- Defined simplified JSON format for WebSocket messages (message, reasoning, status)
 - Note: Settings persistence needs future work
 
 ## Timeline
@@ -84,6 +86,7 @@
 - ✅ Settings UI components
 - ✅ Communication testing - COMPLETE
 - ✅ Command handling verification - COMPLETE
+- 🔄 Implement WebSocket streaming - IN PROGRESS
 - 🔄 Settings persistence - POSTPONED
 
 ## Notes

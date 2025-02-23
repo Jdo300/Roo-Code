@@ -36,6 +36,68 @@
 }
 ```
 
+#### WebSocket Message Format
+
+The WebSocket server now uses a simplified JSON format for streaming messages to clients. There are three main message types: `"message"`, `"reasoning"`, and `"status"`.
+
+##### 1. `"message"` Type (Chat Messages)
+
+For general chat messages sent by Cline:
+
+```json
+{
+  "type": "message",
+  "output": "The text of the chat message",
+  "partial": true/false
+}
+```
+
+- `"type"`: Always `"message"` for chat messages.
+- `"output"`: The actual text content of the chat message.
+- `"partial"`: Boolean indicating if this is a partial chunk of a streaming message (`true`) or a complete message (`false`).
+
+##### 2. `"reasoning"` Type (Cline's Thoughts)
+
+For messages representing Cline's reasoning or internal thoughts:
+
+```json
+{
+  "type": "reasoning",
+  "output": "The text of Cline's reasoning",
+  "partial": true/false
+}
+```
+
+- `"type"`: Always `"reasoning"` for Cline's thought process messages.
+- `"output"`: The text content of Cline's reasoning.
+- `"partial"`: Boolean indicating if this is a partial chunk of streaming reasoning (`true`) or complete reasoning (`false`).
+
+##### 3. `"status"` Type (Status Updates)
+
+For status updates related to various operations (command output, API requests, tool execution, errors, etc.):
+
+```json
+{
+  "type": "status",
+  "statusType": "command_output", // Example: "command_output", "api_req_started", "tool_result", "error", etc.
+  "text": "Optional text associated with the status (e.g., command output)", // Optional
+  "partial": true/false // Optional, only if the status message itself can be streamed
+}
+```
+
+- `"type"`: Always `"status"` for status update messages.
+- `"statusType"`: A string indicating the specific type of status (e.g., `"command_output"`, `"api_req_started"`, `"tool_result"`, `"error"`, etc.). Refer to the `ClineSay` type in `src/shared/ExtensionMessage.ts` for a comprehensive list of possible status types.
+- `"text"`: Optional text content associated with the status update (e.g., the output of a command, error details).
+- `"partial"`: Optional boolean, used only if the status message itself is streamed in chunks.
+
+#### Chat Message
+
+```json
+{
+	"message": "your chat message here"
+}
+```
+
 #### Plugin Commands
 
 ```json

@@ -30,31 +30,59 @@
 
 ### Message Flow Pattern
 
-```text
-Client → WebSocket Server → Command Handler → ClineProvider
-   ↑                                              ↓
-   └──────────────── Response ──────────────────←┘
+The message flow for WebSocket communication will be as follows:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant WebSocket Server
+    participant Command Handler
+    participant ClineProvider
+
+    Client->>WebSocket Server: WebSocketMessage (JSON)
+    WebSocket Server->>Command Handler: processCommand(WebSocketMessage, WebSocket)
+    Command Handler->>ClineProvider: (Call ClineProvider methods to execute commands)
+    ClineProvider-->>Command Handler: Response/Results
+    WebSocket Server-->>Client: WebSocketMessage (JSON) of type "status" or "message" or "reasoning"
 ```
 
 ### Key Technical Decisions
 
-1. **WebSocket Library: `ws`**
+1.  **WebSocket Library: `ws`**
 
     - ✅ Successfully implemented and tested
     - ✅ Reliable client connections
     - ✅ Good TypeScript support
 
-2. **JSON Message Format**
+2.  **JSON Message Format for Streaming**
 
-    ```typescript
-    interface WebSocketMessage {
-    	message?: string // Chat message
-    	command?: string // Command name
-    	value?: unknown // Command value
+    The WebSocket server will use the following simplified JSON format for streaming messages to clients:
+
+    ```json
+    // For general chat messages:
+    {
+      "type": "message",
+      "output": "The text of the chat message",
+      "partial": true/false
+    }
+
+    // For Cline's reasoning/thoughts:
+    {
+      "type": "reasoning",
+      "output": "The text of Cline's reasoning",
+      "partial": true/false
+    }
+
+    // For status updates (command output, API requests, tool execution, errors, etc.):
+    {
+      "type": "status",
+      "statusType": "command_output", // Example: "command_output", "api_req_started", "tool_result", "error", etc.
+      "text": "Optional text associated with the status (e.g., command output)", // Optional
+      "partial": true/false // Optional, only if the status message itself can be streamed
     }
     ```
 
-3. **Settings Management**
+3.  **Settings Management**
     - Default port: 7800
     - Enable/disable toggle in UI
     - State managed through ExtensionStateContext

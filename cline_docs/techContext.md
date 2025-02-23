@@ -7,7 +7,7 @@
 - ✅ Basic WebSocket server implementation in `websocket-server.ts`
 - ✅ Command handling structure in `command-handler.ts`
 - ✅ Settings UI components in `SettingsView.tsx`
-- ⏳ Testing WebSocket communication and command handling
+- ✅ Testing WebSocket communication and command handling
 - 🔄 Settings persistence (postponed)
 
 ### Known Technical Issues

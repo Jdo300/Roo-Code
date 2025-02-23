@@ -82,8 +82,8 @@
 - ✅ WebSocket server implementation
 - ✅ Command handler structure
 - ✅ Settings UI components
-- ⏳ Communication testing - IN PROGRESS
-- ⏳ Command handling verification - IN PROGRESS
+- ✅ Communication testing - COMPLETE
+- ✅ Command handling verification - COMPLETE
 - 🔄 Settings persistence - POSTPONED
 
 ## Notes

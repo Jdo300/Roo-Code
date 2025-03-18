@@ -11,12 +11,19 @@ export async function getModesSection(context: vscode.ExtensionContext): Promise
 	// Get all modes with their overrides from extension state
 	const allModes = await getAllModesWithPrompts(context)
 
-	return `====
+	// Get enableCustomModeCreation setting from extension state
+	const shouldEnableCustomModeCreation = (await context.globalState.get<boolean>("enableCustomModeCreation")) ?? true
+
+	let modesContent = `====
 
 MODES
 
 - These are the currently available modes:
-${allModes.map((mode: ModeConfig) => `  * "${mode.name}" mode (${mode.slug}) - ${mode.roleDefinition.split(".")[0]}`).join("\n")}
+${allModes.map((mode: ModeConfig) => `  * "${mode.name}" mode (${mode.slug}) - ${mode.roleDefinition.split(".")[0]}`).join("\n")}`
+
+	// Only include custom modes documentation if the feature is enabled
+	if (shouldEnableCustomModeCreation) {
+		modesContent += `
 
 - Custom modes can be configured in two ways:
   1. Globally via '${customModesPath}' (created automatically on startup)
@@ -45,7 +52,7 @@ Both files should follow this structure:
      "roleDefinition": "You are Roo, a UI/UX expert specializing in design systems and frontend development. Your expertise includes:\\n- Creating and maintaining design systems\\n- Implementing responsive and accessible web interfaces\\n- Working with CSS, HTML, and modern frontend frameworks\\n- Ensuring consistent user experiences across platforms", // Required: non-empty
      "groups": [ // Required: array of tool groups (can be empty)
        "read",    // Read files group (read_file, search_files, list_files, list_code_definition_names)
-       "edit",    // Edit files group (write_to_file, apply_diff) - allows editing any file
+       "edit",    // Edit files group (apply_diff, write_to_file) - allows editing any file
        // Or with file restrictions:
        // ["edit", { fileRegex: "\\.md$", description: "Markdown files only" }],  // Edit group that only allows editing markdown files
        "browser", // Browser group (browser_action)
@@ -56,4 +63,7 @@ Both files should follow this structure:
     }
   ]
 }`
+	}
+
+	return modesContent
 }

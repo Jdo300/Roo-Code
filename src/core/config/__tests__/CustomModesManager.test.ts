@@ -1,13 +1,17 @@
+// npx jest src/core/config/__tests__/CustomModesManager.test.ts
+
 import * as vscode from "vscode"
 import * as path from "path"
 import * as fs from "fs/promises"
 import { CustomModesManager } from "../CustomModesManager"
 import { ModeConfig } from "../../../shared/modes"
 import { fileExistsAtPath } from "../../../utils/fs"
+import { getWorkspacePath, arePathsEqual } from "../../../utils/path"
 
 jest.mock("vscode")
 jest.mock("fs/promises")
 jest.mock("../../../utils/fs")
+jest.mock("../../../utils/path")
 
 describe("CustomModesManager", () => {
 	let manager: CustomModesManager
@@ -15,9 +19,10 @@ describe("CustomModesManager", () => {
 	let mockOnUpdate: jest.Mock
 	let mockWorkspaceFolders: { uri: { fsPath: string } }[]
 
-	const mockStoragePath = "/mock/settings"
+	// Use path.sep to ensure correct path separators for the current platform
+	const mockStoragePath = `${path.sep}mock${path.sep}settings`
 	const mockSettingsPath = path.join(mockStoragePath, "settings", "cline_custom_modes.json")
-	const mockRoomodes = "/mock/workspace/.roomodes"
+	const mockRoomodes = `${path.sep}mock${path.sep}workspace${path.sep}.roomodes`
 
 	beforeEach(() => {
 		mockOnUpdate = jest.fn()
@@ -34,6 +39,7 @@ describe("CustomModesManager", () => {
 		mockWorkspaceFolders = [{ uri: { fsPath: "/mock/workspace" } }]
 		;(vscode.workspace as any).workspaceFolders = mockWorkspaceFolders
 		;(vscode.workspace.onDidSaveTextDocument as jest.Mock).mockReturnValue({ dispose: jest.fn() })
+		;(getWorkspacePath as jest.Mock).mockReturnValue("/mock/workspace")
 		;(fileExistsAtPath as jest.Mock).mockImplementation(async (path: string) => {
 			return path === mockSettingsPath || path === mockRoomodes
 		})
@@ -243,7 +249,15 @@ describe("CustomModesManager", () => {
 			await manager.updateCustomMode("project-mode", projectMode)
 
 			// Verify .roomodes was created with the project mode
-			expect(fs.writeFile).toHaveBeenCalledWith(mockRoomodes, expect.stringContaining("project-mode"), "utf-8")
+			expect(fs.writeFile).toHaveBeenCalledWith(
+				expect.any(String), // Don't check exact path as it may have different separators on different platforms
+				expect.stringContaining("project-mode"),
+				"utf-8",
+			)
+
+			// Verify the path is correct regardless of separators
+			const writeCall = (fs.writeFile as jest.Mock).mock.calls[0]
+			expect(path.normalize(writeCall[0])).toBe(path.normalize(mockRoomodes))
 
 			// Verify the content written to .roomodes
 			expect(roomodesContent).toEqual({
@@ -351,8 +365,11 @@ describe("CustomModesManager", () => {
 
 		it("watches file for changes", async () => {
 			const configPath = path.join(mockStoragePath, "settings", "cline_custom_modes.json")
-			;(fs.readFile as jest.Mock).mockResolvedValue(JSON.stringify({ customModes: [] }))
 
+			;(fs.readFile as jest.Mock).mockResolvedValue(JSON.stringify({ customModes: [] }))
+			;(arePathsEqual as jest.Mock).mockImplementation((path1: string, path2: string) => {
+				return path.normalize(path1) === path.normalize(path2)
+			})
 			// Get the registered callback
 			const registerCall = (vscode.workspace.onDidSaveTextDocument as jest.Mock).mock.calls[0]
 			expect(registerCall).toBeDefined()

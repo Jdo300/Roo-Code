@@ -167,7 +167,7 @@ Logs a message to the extension's output channel.
 - `message`: `string` - The message to log.
 
 **Return Type:**
-`void` - This method does not return a value.
+`void` - This method does not return a value
 
 ---
 
@@ -424,9 +424,9 @@ interface ClineMessage {
 
 Roo Code API utilizes a streaming mechanism for delivering long responses. This is handled through the `message` event, using `action: "updated"` and `message.partial`.
 
-1.  **Initial Message:** A streaming task starts with `message` event with `action: "created"`.
-2.  **Partial Updates (`action: "updated"`, `message.partial: true`):** Roo sends chunks of data via `message` events with `action: "updated"` and `message.partial` set to `true`. Accumulate these chunks.
-3.  **Final Update (`action: "updated"`, `message.partial: false`):** A final `message` event with `action: "updated"` and `message.partial` set to `false` indicates the stream is complete. Combine all partial chunks for the full response.
+1. **Initial Message:** A streaming task starts with `message` event with `action: "created"`.
+2. **Partial Updates (`action: "updated"`, `message.partial: true`):** Roo sends chunks of data via `message` events with `action: "updated"` and `message.partial` set to `true`. Accumulate these chunks.
+3. **Final Update (`action: "updated"`, `message.partial: false`):** A final `message` event with `action: "updated"` and `message.partial` set to `false` indicates the stream is complete. Combine all partial chunks for the full response.
 
 **Important Considerations:**
 

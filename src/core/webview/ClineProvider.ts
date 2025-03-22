@@ -2509,7 +2509,12 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 			showRooIgnoredFiles,
 			language,
 			maxReadFileLine,
-		} = await this.getState()
+			websocketServerEnabled,
+			websocketServerPort,
+			// Using `as any` to bypass TypeScript limitation with the return type from getState()
+			// This is necessary because the websocketServerEnabled and websocketServerPort properties
+			// were added to GLOBAL_STATE_KEYS but TypeScript doesn't recognize them in the return type
+		} = (await this.getState()) as any
 
 		const telemetryKey = process.env.POSTHOG_API_KEY
 		const machineId = vscode.env.machineId
@@ -2579,8 +2584,8 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 			language,
 			renderContext: this.renderContext,
 			maxReadFileLine: maxReadFileLine ?? 500,
-			websocketServerEnabled: false,
-			websocketServerPort: 7800,
+			websocketServerEnabled: websocketServerEnabled ?? false,
+			websocketServerPort: websocketServerPort ?? 7800,
 			// Add missing required properties
 			toolRequirements: {},
 			modeApiConfigs: {},

@@ -81,15 +81,39 @@ export class WebSocketServerManager {
 
 			// Cast to 'any' to handle potential missing properties during development
 			const anyState = state as any
-			const websocketServerEnabled = anyState.websocketServerEnabled || false
-			const websocketServerPort = anyState.websocketServerPort || 7800
 
-			// Update UI
+			// Use proper null checking to distinguish between false and undefined
+			let websocketServerEnabled =
+				anyState.websocketServerEnabled !== undefined ? anyState.websocketServerEnabled : false
+			let websocketServerPort = anyState.websocketServerPort !== undefined ? anyState.websocketServerPort : 7800
+
+			// Store default values if they don't already exist in global state
+			if (anyState.websocketServerEnabled === undefined) {
+				this.log("Initializing websocketServerEnabled to default value: false")
+				await this.provider.updateGlobalState("websocketServerEnabled", false)
+				// Make sure our local value matches what was saved
+				websocketServerEnabled = false
+			}
+
+			if (anyState.websocketServerPort === undefined) {
+				this.log("Initializing websocketServerPort to default value: 7800")
+				await this.provider.updateGlobalState("websocketServerPort", 7800)
+				// Make sure our local value matches what was saved
+				websocketServerPort = 7800
+			}
+
+			// Log the final state to help debug
+			this.log(
+				`Initialized WebSocket server with settings - enabled: ${websocketServerEnabled}, port: ${websocketServerPort}`,
+			)
+
+			// Update UI first
 			this.updateStatusBarItem(websocketServerEnabled, websocketServerPort)
 
-			// Start server if enabled
+			// Then start server if enabled
 			if (websocketServerEnabled) {
-				this.startServer(websocketServerPort)
+				this.log("Automatically starting WebSocket server based on saved settings")
+				await this.startServer(websocketServerPort)
 			}
 		} catch (error) {
 			this.log(`Error initializing WebSocket server: ${error instanceof Error ? error.message : String(error)}`)
@@ -101,12 +125,25 @@ export class WebSocketServerManager {
 	 * Start the WebSocket server
 	 */
 	public async startServer(port: number = 7800): Promise<void> {
-		if (this.server) {
+		// If the server is already running on the same port, don't restart it
+		if (this.server && this.currentPort === port) {
 			this.log(`Server already running on port ${this.currentPort}`)
 			return
 		}
 
+		// If the server is running on a different port, stop it first
+		if (this.server && this.currentPort !== port) {
+			this.log(`Stopping server on port ${this.currentPort} to restart on port ${port}`)
+			this.stopServer()
+			// Add a small delay to ensure clean shutdown
+			await new Promise((resolve) => setTimeout(resolve, 100))
+		}
+
 		try {
+			// Ensure the port is saved to global state before starting
+			await this.provider.updateGlobalState("websocketServerPort", port)
+			await this.provider.updateGlobalState("websocketServerEnabled", true)
+
 			this.currentPort = port
 			this.server = new WebSocketServer({ port, host: "0.0.0.0" })
 			this.isRunning = true
@@ -185,12 +222,25 @@ export class WebSocketServerManager {
 		const state = await this.provider.getState()
 		// Cast to 'any' to handle potential missing properties during development
 		const anyState = state as any
-		const websocketServerEnabled = anyState.websocketServerEnabled || false
-		const websocketServerPort = anyState.websocketServerPort || 7800
+		// Use proper null checking to distinguish between false and undefined
+		const websocketServerEnabled =
+			anyState.websocketServerEnabled !== undefined ? anyState.websocketServerEnabled : false
+		const websocketServerPort = anyState.websocketServerPort !== undefined ? anyState.websocketServerPort : 7800
+
+		this.log(`Toggle server - current state: ${websocketServerEnabled}, port: ${websocketServerPort}`)
 
 		const newEnabledState = !websocketServerEnabled
+
+		// Make sure we save the settings to persistent storage
 		await this.provider.updateGlobalState("websocketServerEnabled", newEnabledState)
 
+		// Also make sure we persist the port setting (even if unchanged)
+		await this.provider.updateGlobalState("websocketServerPort", websocketServerPort)
+
+		// Force a context state update to ensure the UI reflects the changes immediately
+		await this.provider.postStateToWebview()
+
+		// Update the actual server state based on the new setting
 		if (newEnabledState) {
 			await this.startServer(websocketServerPort)
 		} else {

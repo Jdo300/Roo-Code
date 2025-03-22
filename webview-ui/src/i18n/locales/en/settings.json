@@ -28,8 +28,15 @@
 		"terminal": "Terminal",
 		"advanced": "Advanced",
 		"experimental": "Experimental Features",
+		"websocket": "WebSocket Server",
 		"language": "Language",
 		"about": "About Roo Code"
+	},
+	"websocket": {
+		"enable": "Enable WebSocket Server",
+		"enableDescription": "Enable the WebSocket server to allow external applications to communicate with Roo Code through a WebSocket connection.",
+		"port": "WebSocket Server Port",
+		"portDescription": "The port number on which the WebSocket server will listen for connections. Valid range: 1024-65535."
 	},
 	"autoApprove": {
 		"description": "Allow Roo to automatically perform operations without requiring approval. Enable these settings only if you fully trust the AI and understand the associated security risks.",

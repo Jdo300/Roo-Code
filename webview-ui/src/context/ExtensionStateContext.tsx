@@ -81,6 +81,10 @@ export interface ExtensionStateContextType extends ExtensionState {
 	maxReadFileLine: number
 	setMaxReadFileLine: (value: number) => void
 	machineId?: string
+	websocketServerEnabled: boolean
+	setWebsocketServerEnabled: (value: boolean) => void
+	websocketServerPort: number
+	setWebsocketServerPort: (value: number) => void
 }
 
 export const ExtensionStateContext = createContext<ExtensionStateContextType | undefined>(undefined)
@@ -297,6 +301,10 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setCustomSupportPrompts: (value) => setState((prevState) => ({ ...prevState, customSupportPrompts: value })),
 		setEnhancementApiConfigId: (value) =>
 			setState((prevState) => ({ ...prevState, enhancementApiConfigId: value })),
+		setWebsocketServerEnabled: (value: boolean) =>
+			setState((prevState) => ({ ...prevState, websocketServerEnabled: value })),
+		setWebsocketServerPort: (value: number) =>
+			setState((prevState) => ({ ...prevState, websocketServerPort: value })),
 		setEnableCustomModeCreation: (value) =>
 			setState((prevState) => ({ ...prevState, enableCustomModeCreation: value })),
 		setAutoApprovalEnabled: (value) => setState((prevState) => ({ ...prevState, autoApprovalEnabled: value })),

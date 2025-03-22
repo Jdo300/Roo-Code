@@ -3,5 +3,8 @@
 		"thousand_suffix": "k",
 		"million_suffix": "m",
 		"billion_suffix": "b"
+	},
+	"errors": {
+		"websocket_server_error": "WebSocket server error: {{message}}"
 	}
 }

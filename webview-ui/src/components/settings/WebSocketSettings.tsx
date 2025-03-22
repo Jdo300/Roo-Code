@@ -28,7 +28,7 @@ export const WebSocketSettings = ({
 			</SectionHeader>
 
 			<Section>
-				<div className="mb-4">
+				<div className="mt-1">
 					<VSCodeCheckbox
 						className="leading-none"
 						checked={websocketServerEnabled}
@@ -40,7 +40,7 @@ export const WebSocketSettings = ({
 					</p>
 				</div>
 
-				<div className="mt-4">
+				<div className="mt-2">
 					<label htmlFor="websocketServerPort" className="font-medium block mb-2">
 						{t("settings:websocket.port")}
 					</label>

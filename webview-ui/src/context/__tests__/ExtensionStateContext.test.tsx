@@ -204,6 +204,10 @@ describe("mergeExtensionState", () => {
 			showRooIgnoredFiles: true,
 			renderContext: "sidebar",
 			maxReadFileLine: 500,
+			websocketServerEnabled: false,
+			websocketServerPort: 7800,
+			toolRequirements: {},
+			modeApiConfigs: {},
 		}
 
 		const prevState: ExtensionState = {

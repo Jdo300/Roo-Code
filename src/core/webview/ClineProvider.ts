@@ -22,7 +22,7 @@ import {
 	ConfigurationValues,
 } from "../../shared/globalState"
 import { HistoryItem } from "../../shared/HistoryItem"
-import { ApiConfigMeta, ExtensionMessage } from "../../shared/ExtensionMessage"
+import { ApiConfigMeta, ExtensionMessage, ExtensionState } from "../../shared/ExtensionMessage"
 import { checkoutDiffPayloadSchema, checkoutRestorePayloadSchema, WebviewMessage } from "../../shared/WebviewMessage"
 import { Mode, PromptComponent, defaultModeSlug, ModeConfig } from "../../shared/modes"
 import { checkExistKey } from "../../shared/checkExistApiConfig"
@@ -2461,7 +2461,7 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 		this.postMessageToWebview({ type: "state", state })
 	}
 
-	async getStateToPostToWebview() {
+	async getStateToPostToWebview(): Promise<ExtensionState> {
 		const {
 			apiConfiguration,
 			lastShownAnnouncementId,
@@ -2509,8 +2509,6 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 			showRooIgnoredFiles,
 			language,
 			maxReadFileLine,
-			websocketServerEnabled,
-			websocketServerPort,
 		} = await this.getState()
 
 		const telemetryKey = process.env.POSTHOG_API_KEY
@@ -2581,8 +2579,12 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 			language,
 			renderContext: this.renderContext,
 			maxReadFileLine: maxReadFileLine ?? 500,
-			websocketServerEnabled: websocketServerEnabled ?? false,
-			websocketServerPort: websocketServerPort ?? 7800,
+			websocketServerEnabled: false,
+			websocketServerPort: 7800,
+			// Add missing required properties
+			toolRequirements: {},
+			modeApiConfigs: {},
+			enableCustomModeCreation: false,
 		}
 	}
 

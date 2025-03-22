@@ -152,6 +152,7 @@ export interface ExtensionState {
 	mcpEnabled: boolean
 	enableMcpServerCreation: boolean
 	enableCustomModeCreation?: boolean
+	mcpServers?: McpServer[] // List of available MCP servers
 	mode: Mode
 	modeApiConfigs?: Record<Mode, string>
 	enhancementApiConfigId?: string
@@ -171,6 +172,8 @@ export interface ExtensionState {
 	websocketServerEnabled: boolean // Whether the WebSocket server is enabled
 	websocketServerPort: number // Port for the WebSocket server
 }
+
+// Export is already done via the interface declaration
 
 export type { ClineMessage, ClineAsk, ClineSay }
 

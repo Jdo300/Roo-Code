@@ -461,6 +461,8 @@ describe("ClineProvider", () => {
 			showRooIgnoredFiles: true,
 			renderContext: "sidebar",
 			maxReadFileLine: 500,
+			websocketServerEnabled: false,
+			websocketServerPort: 7800,
 		}
 
 		const message: ExtensionMessage = {
@@ -543,6 +545,8 @@ describe("ClineProvider", () => {
 		expect(state).toHaveProperty("ttsEnabled")
 		expect(state).toHaveProperty("diffEnabled")
 		expect(state).toHaveProperty("writeDelayMs")
+		expect(state).toHaveProperty("websocketServerEnabled")
+		expect(state).toHaveProperty("websocketServerPort")
 	})
 
 	test("language is set to VSCode language", async () => {
@@ -560,6 +564,32 @@ describe("ClineProvider", () => {
 		const state = await provider.getState()
 
 		expect(state.diffEnabled).toBe(true)
+	})
+
+	test("websocketServerEnabled defaults to false when not set", async () => {
+		// Mock globalState.get to return undefined for websocketServerEnabled
+		;(mockContext.globalState.get as jest.Mock).mockImplementation((key: string) => {
+			if (key === "websocketServerEnabled") {
+				return undefined
+			}
+			return null
+		})
+
+		const state = (await provider.getState()) as any
+		expect(state.websocketServerEnabled).toBe(false)
+	})
+
+	test("websocketServerPort defaults to 7800 when not set", async () => {
+		// Mock globalState.get to return undefined for websocketServerPort
+		;(mockContext.globalState.get as jest.Mock).mockImplementation((key: string) => {
+			if (key === "websocketServerPort") {
+				return undefined
+			}
+			return null
+		})
+
+		const state = (await provider.getState()) as any
+		expect(state.websocketServerPort).toBe(7800)
 	})
 
 	test("writeDelayMs defaults to 1000ms", async () => {

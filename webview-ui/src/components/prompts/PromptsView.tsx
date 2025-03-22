@@ -40,7 +40,7 @@ type PromptsViewProps = {
 
 // Helper to get group name regardless of format
 function getGroupName(group: GroupEntry): ToolGroup {
-	return Array.isArray(group) ? group[0] : group
+	return Array.isArray(group) ? group[0] : (group as ToolGroup)
 }
 
 const PromptsView = ({ onDone }: PromptsViewProps) => {

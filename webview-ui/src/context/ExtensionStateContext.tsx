@@ -156,6 +156,8 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		showRooIgnoredFiles: true, // Default to showing .rooignore'd files with lock symbol (current behavior).
 		renderContext: "sidebar",
 		maxReadFileLine: 500, // Default max read file line limit
+		websocketServerEnabled: false, // Whether the WebSocket server is enabled
+		websocketServerPort: 7800, // Port for the WebSocket server
 	})
 
 	const [didHydrateState, setDidHydrateState] = useState(false)

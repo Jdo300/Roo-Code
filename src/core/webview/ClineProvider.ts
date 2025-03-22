@@ -39,6 +39,7 @@ import { McpServerManager } from "../../services/mcp/McpServerManager"
 import { ShadowCheckpointService } from "../../services/checkpoints/ShadowCheckpointService"
 import { BrowserSession } from "../../services/browser/BrowserSession"
 import { discoverChromeInstances } from "../../services/browser/browserDiscovery"
+import { WebSocketServerManager } from "../../server/WebSocketServerManager"
 import { searchWorkspaceFiles } from "../../services/search/file-search"
 import { fileExistsAtPath } from "../../utils/fs"
 import { playSound, setSoundEnabled, setSoundVolume } from "../../utils/sound"
@@ -91,6 +92,7 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 	private contextProxy: ContextProxy
 	configManager: ConfigManager
 	customModesManager: CustomModesManager
+	websocketServerManager?: WebSocketServerManager
 	get cwd() {
 		return getWorkspacePath()
 	}
@@ -1646,6 +1648,39 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 						await this.updateGlobalState("maxReadFileLine", message.value)
 						await this.postStateToWebview()
 						break
+					case "websocketServerEnabled":
+						await this.updateGlobalState("websocketServerEnabled", message.bool)
+						await this.postStateToWebview()
+
+						// Update WebSocket server state based on new setting
+						if (this.websocketServerManager) {
+							if (message.bool) {
+								this.websocketServerManager.startServer()
+							} else {
+								this.websocketServerManager.stopServer()
+							}
+						}
+						break
+					case "websocketServerPort":
+						// Validate port number
+						const port = message.value as number
+						if (port < 1024 || port > 65535) {
+							this.view?.webview.postMessage({
+								type: "action",
+								action: "error",
+								text: t("common:errors.websocket_port_invalid"),
+							})
+							return
+						}
+
+						await this.updateGlobalState("websocketServerPort", port)
+						await this.postStateToWebview()
+
+						// Restart server if it's running
+						if (this.websocketServerManager && (await this.getGlobalState("websocketServerEnabled"))) {
+							this.websocketServerManager.restartServer()
+						}
+						break
 					case "enhancementApiConfigId":
 						await this.updateGlobalState("enhancementApiConfigId", message.text)
 						await this.postStateToWebview()
@@ -2474,6 +2509,8 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 			showRooIgnoredFiles,
 			language,
 			maxReadFileLine,
+			websocketServerEnabled,
+			websocketServerPort,
 		} = await this.getState()
 
 		const telemetryKey = process.env.POSTHOG_API_KEY
@@ -2544,6 +2581,8 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 			language,
 			renderContext: this.renderContext,
 			maxReadFileLine: maxReadFileLine ?? 500,
+			websocketServerEnabled: websocketServerEnabled ?? false,
+			websocketServerPort: websocketServerPort ?? 7800,
 		}
 	}
 

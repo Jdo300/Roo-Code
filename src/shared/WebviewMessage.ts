@@ -116,6 +116,8 @@ export interface WebviewMessage {
 		| "language"
 		| "maxReadFileLine"
 		| "searchFiles"
+		| "websocketServerEnabled"
+		| "websocketServerPort"
 	text?: string
 	disabled?: boolean
 	askResponse?: ClineAskResponse

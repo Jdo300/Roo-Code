@@ -21,6 +21,7 @@ import { McpServerManager } from "./services/mcp/McpServerManager"
 import { telemetryService } from "./services/telemetry/TelemetryService"
 import { TerminalRegistry } from "./integrations/terminal/TerminalRegistry"
 import { API } from "./exports/api"
+import { WebSocketServerManager } from "./server/WebSocketServerManager"
 
 import { handleUri, registerCommands, registerCodeActions, registerTerminalActions } from "./activate"
 import { formatLanguage } from "./shared/language"
@@ -111,7 +112,16 @@ export function activate(context: vscode.ExtensionContext) {
 	registerTerminalActions(context)
 
 	// Implements the `RooCodeAPI` interface.
-	return new API(outputChannel, provider)
+	const api = new API(outputChannel, provider)
+
+	// Create a separate output channel for WebSocket server
+	const websocketOutputChannel = vscode.window.createOutputChannel("Roo-Code WebSocket")
+	context.subscriptions.push(websocketOutputChannel)
+
+	// Initialize WebSocketServerManager
+	provider.websocketServerManager = WebSocketServerManager.getInstance(context, websocketOutputChannel, api, provider)
+
+	return api
 }
 
 // This method is called when your extension is deactivated
@@ -123,4 +133,12 @@ export async function deactivate() {
 
 	// Clean up terminal handlers
 	TerminalRegistry.cleanup()
+
+	// Clean up WebSocket server
+	if (extensionContext) {
+		const provider = ClineProvider.getVisibleInstance()
+		if (provider?.websocketServerManager) {
+			provider.websocketServerManager.dispose()
+		}
+	}
 }

@@ -256,6 +256,8 @@ export type GlobalStateKey =
 	| "language"
 	| "maxReadFileLine"
 	| "fakeAi"
+	| "websocketServerEnabled"
+	| "websocketServerPort"
 
 export type ConfigurationKey = GlobalStateKey | SecretKey
 

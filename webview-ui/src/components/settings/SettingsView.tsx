@@ -14,6 +14,7 @@ import {
 	AlertTriangle,
 	Globe,
 	Info,
+	Server,
 	LucideIcon,
 } from "lucide-react"
 import { CaretSortIcon } from "@radix-ui/react-icons"
@@ -54,6 +55,7 @@ import { TerminalSettings } from "./TerminalSettings"
 import { AdvancedSettings } from "./AdvancedSettings"
 import { ExperimentalSettings } from "./ExperimentalSettings"
 import { LanguageSettings } from "./LanguageSettings"
+import { WebSocketSettings } from "./WebSocketSettings"
 import { About } from "./About"
 import { Section } from "./Section"
 
@@ -71,6 +73,7 @@ const sectionNames = [
 	"terminal",
 	"advanced",
 	"experimental",
+	"websocket",
 	"language",
 	"about",
 ] as const
@@ -132,6 +135,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 		showRooIgnoredFiles,
 		remoteBrowserEnabled,
 		maxReadFileLine,
+		websocketServerEnabled,
+		websocketServerPort,
 	} = cachedState
 
 	// Make sure apiConfiguration is initialized and managed by SettingsView.
@@ -242,6 +247,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 			vscode.postMessage({ type: "updateExperimental", values: experiments })
 			vscode.postMessage({ type: "alwaysAllowModeSwitch", bool: alwaysAllowModeSwitch })
 			vscode.postMessage({ type: "alwaysAllowSubtasks", bool: alwaysAllowSubtasks })
+			vscode.postMessage({ type: "websocketServerEnabled", bool: websocketServerEnabled })
+			vscode.postMessage({ type: "websocketServerPort", value: websocketServerPort })
 			vscode.postMessage({ type: "upsertApiConfiguration", text: currentApiConfigName, apiConfiguration })
 			vscode.postMessage({ type: "telemetrySetting", text: telemetrySetting })
 			setChangeDetected(false)
@@ -277,6 +284,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 	const terminalRef = useRef<HTMLDivElement>(null)
 	const advancedRef = useRef<HTMLDivElement>(null)
 	const experimentalRef = useRef<HTMLDivElement>(null)
+	const websocketRef = useRef<HTMLDivElement>(null)
 	const languageRef = useRef<HTMLDivElement>(null)
 	const aboutRef = useRef<HTMLDivElement>(null)
 
@@ -291,6 +299,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 			{ id: "terminal", icon: SquareTerminal, ref: terminalRef },
 			{ id: "advanced", icon: Cog, ref: advancedRef },
 			{ id: "experimental", icon: FlaskConical, ref: experimentalRef },
+			{ id: "websocket", icon: Server, ref: websocketRef },
 			{ id: "language", icon: Globe, ref: languageRef },
 			{ id: "about", icon: Info, ref: aboutRef },
 		],
@@ -304,6 +313,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 			terminalRef,
 			advancedRef,
 			experimentalRef,
+			websocketRef,
 		],
 	)
 
@@ -482,6 +492,14 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone },
 						setCachedStateField={setCachedStateField}
 						setExperimentEnabled={setExperimentEnabled}
 						experiments={experiments}
+					/>
+				</div>
+
+				<div ref={websocketRef}>
+					<WebSocketSettings
+						websocketServerEnabled={websocketServerEnabled ?? false}
+						websocketServerPort={websocketServerPort ?? 7800}
+						setCachedStateField={setCachedStateField}
 					/>
 				</div>
 

@@ -35,6 +35,20 @@ jest.mock("@vscode/webview-ui-toolkit/react", () => ({
 	),
 }))
 
+// Mock lucide-react components
+jest.mock("lucide-react", () => ({
+	Server: () => <div data-testid="server-icon">Server Icon</div>,
+}))
+
+// Mock SectionHeader and Section components
+jest.mock("../SectionHeader", () => ({
+	SectionHeader: ({ children }: any) => <div data-testid="section-header">{children}</div>,
+}))
+
+jest.mock("../Section", () => ({
+	Section: ({ children }: any) => <div data-testid="section">{children}</div>,
+}))
+
 describe("WebSocketSettings", () => {
 	const defaultProps = {
 		websocketServerEnabled: false,

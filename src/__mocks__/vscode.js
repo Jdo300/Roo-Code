@@ -1,4 +1,9 @@
 const vscode = {
+	// Status bar alignment options
+	StatusBarAlignment: {
+		Left: 1,
+		Right: 2,
+	},
 	env: {
 		language: "en", // Default language for tests
 		appName: "Visual Studio Code Test",
@@ -12,6 +17,19 @@ const vscode = {
 		showInformationMessage: jest.fn(),
 		showErrorMessage: jest.fn(),
 		createTextEditorDecorationType: jest.fn().mockReturnValue({
+			dispose: jest.fn(),
+		}),
+		createStatusBarItem: jest.fn().mockReturnValue({
+			text: "",
+			tooltip: "",
+			command: undefined,
+			show: jest.fn(),
+			hide: jest.fn(),
+			dispose: jest.fn(),
+		}),
+		createOutputChannel: jest.fn().mockReturnValue({
+			appendLine: jest.fn(),
+			clear: jest.fn(),
 			dispose: jest.fn(),
 		}),
 		tabGroups: {
@@ -33,6 +51,24 @@ const vscode = {
 		fs: {
 			stat: jest.fn(),
 		},
+		getConfiguration: jest.fn().mockReturnValue({
+			get: jest.fn(),
+			update: jest.fn(),
+		}),
+	},
+	commands: {
+		registerCommand: jest.fn().mockReturnValue({ dispose: jest.fn() }),
+		executeCommand: jest.fn(),
+	},
+	extensions: {
+		getExtension: jest.fn().mockReturnValue({
+			packageJSON: {
+				version: "1.0.0-test",
+			},
+			activate: jest.fn(),
+			isActive: true,
+			exports: {},
+		}),
 	},
 	Disposable: class {
 		dispose() {}

@@ -21,7 +21,14 @@ jest.mock("vscode", () => ({
 	},
 }))
 
-const MockIpcServer = IpcServer as jest.MockedClass<typeof IpcServer>
+// Update the mock class type to match the new constructor signature
+interface IpcServerConstructor {
+	new (
+		options: { socketPath?: string; host?: string; port?: number | string },
+		log?: (...args: unknown[]) => void,
+	): IpcServer
+}
+const MockIpcServer = IpcServer as jest.MockedClass<IpcServerConstructor>
 const MockClineProvider = ClineProvider as jest.MockedClass<typeof ClineProvider>
 const mockExecuteCommand = vscode.commands.executeCommand as jest.Mock
 const _mockGetConfiguration = vscode.workspace.getConfiguration as jest.Mock // Prefix with _
@@ -55,12 +62,17 @@ describe("API", () => {
 			emit: jest.fn(),
 		} as any
 		// Explicitly define the log parameter as optional with the correct type
-		MockIpcServer.mockImplementation((_socketPath: string, _log?: (...args: unknown[]) => void) => {
-			// Simulate the instance created in the constructor
-			return mockIpcInstance
-		})
+		MockIpcServer.mockImplementation(
+			(
+				_options: { socketPath?: string; host?: string; port?: number | string },
+				_log?: (...args: unknown[]) => void,
+			) => {
+				// Simulate the instance created in the constructor
+				return mockIpcInstance
+			},
+		)
 
-		api = new API(mockOutputChannel, mockSidebarProvider, "/fake/socket/path", false)
+		api = new API(mockOutputChannel, mockSidebarProvider, { socketPath: "/fake/socket/path" }, false)
 	})
 
 	afterEach(() => {

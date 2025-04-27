@@ -92,6 +92,8 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 		if (payload.origin === IpcOrigin.Client) {
 			switch (payload.type) {
 				case IpcMessageType.TaskCommand:
+					// Emit the generic TaskCommand event for now.
+					// The handling of specific command names will be done in src/exports/api.ts
 					this.emit(IpcMessageType.TaskCommand, payload.clientId, payload.data)
 					break
 			}

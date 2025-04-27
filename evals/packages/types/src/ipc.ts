@@ -22,6 +22,24 @@ export enum TaskCommandName {
 	StartNewTask = "StartNewTask",
 	CancelTask = "CancelTask",
 	CloseTask = "CloseTask",
+	GetCurrentTaskStack = "GetCurrentTaskStack",
+	ClearCurrentTask = "ClearCurrentTask",
+	CancelCurrentTask = "CancelCurrentTask",
+	SendMessage = "SendMessage",
+	PressPrimaryButton = "PressPrimaryButton",
+	PressSecondaryButton = "PressSecondaryButton",
+	SetConfiguration = "SetConfiguration",
+	IsReady = "IsReady",
+	GetMessages = "GetMessages",
+	GetTokenUsage = "GetTokenUsage",
+	Log = "Log",
+	ResumeTask = "ResumeTask",
+	IsTaskInHistory = "IsTaskInHistory",
+	CreateProfile = "CreateProfile",
+	GetProfiles = "GetProfiles",
+	SetActiveProfile = "SetActiveProfile",
+	getActiveProfile = "getActiveProfile",
+	DeleteProfile = "DeleteProfile",
 }
 
 export const taskCommandSchema = z.discriminatedUnion("commandName", [
@@ -29,7 +47,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 		commandName: z.literal(TaskCommandName.StartNewTask),
 		data: z.object({
 			configuration: rooCodeSettingsSchema,
-			text: z.string(),
+			text: z.string().optional(),
 			images: z.array(z.string()).optional(),
 			newTab: z.boolean().optional(),
 		}),
@@ -41,6 +59,81 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	z.object({
 		commandName: z.literal(TaskCommandName.CloseTask),
 		data: z.string(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.GetCurrentTaskStack),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.ClearCurrentTask),
+		data: z.string().optional(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.CancelCurrentTask),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.SendMessage),
+		data: z.object({
+			message: z.string().optional(),
+			images: z.array(z.string()).optional(),
+		}),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.PressPrimaryButton),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.PressSecondaryButton),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.SetConfiguration),
+		data: z.any(), // Using z.any() for Partial<ConfigurationValues> as the exact schema isn't in roo-code.d.ts
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.IsReady),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.GetMessages),
+		data: z.string(), // taskId
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.GetTokenUsage),
+		data: z.string(), // taskId
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.Log),
+		data: z.string(), // message
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.ResumeTask),
+		data: z.string(), // taskId
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.IsTaskInHistory),
+		data: z.string(), // taskId
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.CreateProfile),
+		data: z.string(), // name
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.GetProfiles),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.SetActiveProfile),
+		data: z.string(), // name
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.getActiveProfile),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.DeleteProfile),
+		data: z.string(), // name
 	}),
 ])
 

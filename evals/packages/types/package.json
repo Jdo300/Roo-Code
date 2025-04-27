@@ -11,8 +11,5 @@
 	"dependencies": {
 		"zod": "^3.24.2"
 	},
-	"devDependencies": {
-		"@evals/eslint-config": "workspace:^",
-		"@evals/typescript-config": "workspace:^"
-	}
+	"devDependencies": {}
 }

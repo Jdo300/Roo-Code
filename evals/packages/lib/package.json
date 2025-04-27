@@ -10,8 +10,6 @@
 		"format": "prettier --write src"
 	},
 	"devDependencies": {
-		"@evals/eslint-config": "workspace:^",
-		"@evals/typescript-config": "workspace:^",
 		"vitest": "^3.0.9"
 	}
 }

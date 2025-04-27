@@ -505,5 +505,8 @@
 		"webview-ui/**/*.{ts,tsx}": [
 			"npx eslint -c webview-ui/.eslintrc.json --max-warnings=0 --fix"
 		]
-	}
+	},
+	"workspaces": [
+		"evals/packages/*"
+	]
 }

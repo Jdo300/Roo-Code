@@ -123,4 +123,16 @@ export interface RooCodeAPI extends EventEmitter<RooCodeEvents> {
 	 * Returns true if the API is ready to use.
 	 */
 	isReady(): boolean
+
+	/**
+	 * Retrieves messages for a given task ID.
+	 * @param taskId The ID of the task.
+	 */
+	getMessages(taskId: string): void // Inferring return type as void based on usage in api.ts
+
+	/**
+	 * Retrieves token usage for a given task ID.
+	 * @param taskId The ID of the task.
+	 */
+	getTokenUsage(taskId: string): void // Inferring return type as void based on usage in api.ts
 }

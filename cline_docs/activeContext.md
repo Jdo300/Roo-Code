@@ -1,68 +1,27 @@
-# Active Context: Roo Code WebSocket Server & Settings Interface
+# Active Context: Roo Code RPC Socket Enhancement
 
 ## What We're Working On Now
 
-We've successfully implemented the WebSocket server feature for the Roo Code VSCode extension and fixed all testing issues. The WebSocket functionality is now fully tested with passing tests. Our next focus is troubleshooting the settings interface to address several UI issues that need attention.
+We are currently focused on enhancing the existing `node-ipc` based RPC socket implementation for the Roo Code VSCode extension. The goal is to expose the full Roo Code API functionality through this socket, add support for TCP connections via environment variables, and integrate settings into the UI at a later stage.
 
 ## Recent Changes
 
-1. Created and implemented the WebSocket server:
-
-    - Added WebSocket settings to ExtensionState and UI components
-    - Created WebSocketServerManager singleton class
-    - Implemented command processing and event streaming
-    - Added proper error handling and validation
-    - Created comprehensive test coverage
-
-2. Created comprehensive documentation:
-
-    - `documentation/websocket_api_schema.md` - Defines the communication protocol
-    - `documentation/websocket_server_specs.md` - Outlines the non-communication requirements
-    - `documentation/websocket_server_settings_implementation.md` - Details settings implementation following Roo Code patterns
-
-3. Implemented key files:
-
-    - Updated `src/shared/ExtensionMessage.ts` with WebSocket settings
-    - Updated `src/shared/WebviewMessage.ts` with message types
-    - Updated `src/core/webview/ClineProvider.ts` to handle WebSocket settings
-    - Added `webview-ui/src/components/settings/WebSocketSettings.tsx` component
-    - Created `src/server/WebSocketServerManager.ts` singleton class
-    - Updated `src/extension.ts` to initialize the WebSocket server manager
-
-4. Fixed TypeScript build errors:
-
-    - Resolved issues with `websocketServerEnabled` and `websocketServerPort` properties not being recognized
-    - Successfully built and ran the plugin
-
-5. Fixed test infrastructure:
-    - Added proper mocks for VS Code commands and extensions in `src/__mocks__/vscode.js`
-    - Created Jest-compatible WebSocket mocks in `src/__mocks__/ws.js`
-    - Added UI component mocks for WebSocketSettings tests
-    - Skipped one problematic test in WebSocketServerManager that was difficult to mock properly
-    - All WebSocketServerManager tests (22 passing, 1 skipped) and WebSocketSettings tests (7 passing) now pass successfully
+The previous WebSocket server implementation branch was recreated. The project now utilizes an existing `node-ipc` based RPC socket implementation found in `evals/packages/ipc/`. This existing implementation currently only supports a limited set of commands (`StartNewTask`, `CancelTask`, `CloseTask`) but includes basic event broadcasting.
 
 ## Current Focus
 
-1. Troubleshooting the settings interface:
-    - Identify and fix UI issues in the settings page
-    - Address any usability concerns with the WebSocket settings UI
-    - Ensure proper responsiveness and accessibility
+Our immediate focus is on the following steps:
+
+1.  **Confirm Current API State:** Verify that the `RooCodeAPI` documentation (`documentation/roocode-api.md`) is up-to-date by comparing it against the actual code implementation.
+2.  **Verify Project Build and Run:** Ensure the current project state can be built and run successfully.
+3.  **Extend RPC Socket Commands:** Modify the RPC socket server to handle all available `RooCodeAPI` methods.
+4.  **Implement Unit Tests:** Write unit tests for the newly exposed RPC socket commands.
+5.  **Add TCP Configuration:** Implement the ability to configure the `node-ipc` server to use TCP connections via environment variables (`ROO_CODE_IPC_TCP_PORT`, `ROO_CODE_IPC_TCP_HOST`).
 
 ## Next Steps
 
-1. Consider adding example client implementations in common languages:
+Following the current focus, the next steps will involve:
 
-    - JavaScript/TypeScript client example
-    - Python client example
-    - C# client example
-
-2. Explore potential extensions to the WebSocket API:
-
-    - Additional command capabilities
-    - Enhanced security features (authentication, API keys)
-    - Telemetry and usage statistics
-
-3. Potential future improvements:
-    - Performance optimizations for high-volume message traffic
-    - Additional configuration options (allowed origins, connection limits)
-    - API versioning support
+1.  **Update Documentation:** Revise `documentation/websocket_api_schema.md` to accurately reflect the `node-ipc` RPC/TCP implementation and update other relevant documentation files.
+2.  **Implement Settings UI:** Add a section to the Roo Code settings panel to allow configuration of the RPC socket (socket path, TCP host/port) and related settings through the UI.
+3.  **Explore Future Enhancements:** Consider adding example client implementations, enhanced security features, performance optimizations, and other potential improvements as outlined in previous contexts.

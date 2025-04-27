@@ -1,74 +1,70 @@
-# Technical Context: Roo Code WebSocket Server
+# Technical Context: Roo Code RPC Socket
 
 ## Technologies Used
 
-1. **Core Technologies:**
+1.  **Core Technologies:**
+    - **TypeScript**: The entire codebase uses TypeScript for type safety and developer experience.
+    - **Node.js**: The runtime environment for the server-side code.
+    - **VS Code Extension API**: Used for integration with VS Code.
+    - **RPC (Remote Procedure Call)**: The communication paradigm used.
 
-    - **TypeScript**: The entire codebase uses TypeScript for type safety and developer experience
-    - **Node.js**: The runtime environment for the server-side code
-    - **VS Code Extension API**: Used for integration with VS Code
-    - **WebSocket Protocol**: For real-time bidirectional communication
+2.  **Libraries and Dependencies:**
+    - **node-ipc**: The library used for implementing the RPC socket, supporting both socket paths and TCP connections.
+    - **zod**: Used for schema validation in the Roo Code codebase, including IPC messages.
 
-2. **Libraries and Dependencies:**
-
-    - **ws**: The WebSocket library specified in the requirements for implementing the server
-    - **zod**: Used for schema validation in the Roo Code codebase
-
-3. **Extension-specific Technologies:**
-    - **VS Code Extension Context**: For lifecycle management and state persistence
-    - **VS Code WebView API**: For UI components and user interaction
-    - **VS Code Output Channel**: For logging and debugging
+3.  **Extension-specific Technologies:**
+    - **VS Code Extension Context**: For lifecycle management and state persistence.
+    - **VS Code WebView API**: For UI components and user interaction (relevant for future settings integration).
+    - **VS Code Output Channel**: For logging and debugging.
 
 ## Development Setup
 
-1. **Project Structure:**
+1.  **Project Structure:**
+    - The `node-ipc` RPC socket implementation is located in `evals/packages/ipc/`.
+    - The `API` class (`src/exports/api.ts`) integrates the RPC socket with the core extension functionality.
+    - IPC message types and schemas are defined in `evals/packages/types/src/ipc.ts`.
+    - Configuration is currently handled in `src/extension.ts` using environment variables.
+    - Future settings UI integration will involve files like `src/shared/ExtensionMessage.ts`, `src/shared/WebviewMessage.ts`, `src/core/webview/ClineProvider.ts`, and components in `webview-ui/src/components/settings/`.
 
-    - WebSocket server code should be placed in the `/src/server/` directory
-    - Settings integration spans multiple files in the codebase:
-        - `src/shared/ExtensionMessage.ts`
-        - `src/shared/WebviewMessage.ts`
-        - `src/core/webview/ClineProvider.ts`
-        - `webview-ui/src/components/SettingsView.tsx`
+2.  **Building and Testing:**
+    - Standard build process: `npm run build`.
+    - Extension testing with Jest: `npm run test:extension` (requires test coverage).
+    - RPC socket specific tests should be added in `evals/packages/ipc/src/server.test.ts` or similar.
+    - Extension debugging using VS Code's extension debugging features.
 
-2. **Building and Testing:**
-
-    - Standard build process: `npm run build`
-    - Testing with Jest: `npm run test:extension` (requires test coverage)
-    - Extension debugging using VS Code's extension debugging features
-
-3. **Configuration Management:**
-    - Extension settings stored in VS Code's extension storage
-    - GlobalState is used for persisting settings between sessions
+3.  **Configuration Management:**
+    - Initial configuration is managed via environment variables:
+        - `ROO_CODE_IPC_SOCKET_PATH`: Specifies the socket file path for IPC connections.
+        - `ROO_CODE_IPC_TCP_PORT`: Specifies the TCP port for TCP connections.
+        - `ROO_CODE_IPC_TCP_HOST`: Specifies the TCP host for TCP connections (defaults to 'localhost').
+    - Future settings will be stored in VS Code's extension storage using GlobalState.
 
 ## Technical Constraints
 
-1. **WebSocket Server Constraints:**
+1.  **RPC Socket Constraints:**
+    - Must use the `node-ipc` npm package.
+    - Must follow the singleton pattern for the server instance.
+    - Must support configuration via `ROO_CODE_IPC_SOCKET_PATH` for IPC and `ROO_CODE_IPC_TCP_PORT`/`ROO_CODE_IPC_TCP_HOST` for TCP.
+    - Must handle connections and disconnections gracefully.
 
-    - Must use the `ws` npm package as specified in the requirements
-    - Must follow the singleton pattern to ensure only one server instance
-    - Port must be configurable but default to 7800
-    - Must listen on 0.0.0.0 to allow connections from any interface
+2.  **API Integration Constraints:**
+    - Must interact with the core functionality through the established `API` class.
+    - Must handle extension lifecycle events (activation/deactivation).
+    - Must log to a dedicated output channel (e.g., "Roo-Code IPC").
 
-2. **Settings Implementation Constraints:**
+3.  **Communication Protocol Constraints:**
+    - Must follow the JSON message format defined in `evals/packages/types/src/ipc.ts`.
+    - Must support real-time streaming of messages (events).
+    - Must properly handle all `RooCodeAPI` methods as incoming commands.
 
-    - Must follow the Roo Code pattern in `cline_docs/settings.md`
-    - Must integrate with existing settings UI
-    - Must handle valid port range (1024-65535)
-    - Must provide proper error feedback
+4.  **Testing and Quality Constraints:**
+    - Must have adequate test coverage for the RPC socket implementation.
+    - Must maintain code quality standards (linting, typing).
+    - Should handle edge cases like port/socket path conflicts and connection failures.
+    - Unit tests for RPC command handling are required.
 
-3. **Extension Integration Constraints:**
-
-    - Must interact with the API through the established `API` class
-    - Must handle extension lifecycle events (activation/deactivation)
-    - Must log to a dedicated "Roo-Code WebSocket" output channel
-
-4. **Communication Protocol Constraints:**
-
-    - Must follow the JSON message format defined in `websocket_api_schema.md`
-    - Must support real-time streaming of messages
-    - Must properly handle all `RooCodeAPI` methods and events
-
-5. **Testing and Quality Constraints:**
-    - Must have adequate test coverage as per Roo Code guidelines
-    - Must maintain code quality standards (linting, typing)
-    - Should handle edge cases like port conflicts and connection failures
+5.  **Settings Implementation Constraints (Future):**
+    - Must follow the Roo Code pattern in `cline_docs/settings.md`.
+    - Must integrate with the existing settings UI.
+    - Must handle valid port range for TCP connections.
+    - Must provide proper error feedback in the UI.

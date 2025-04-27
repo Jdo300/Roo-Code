@@ -49,10 +49,19 @@ All client commands follow this structure:
 
 | commandName            | Description                             | Arguments                                     | taskId Required? |
 | ---------------------- | --------------------------------------- | --------------------------------------------- | ---------------- |
-| `startNewTask`         | Starts a new task                       | `{ "text": string?, "images": string[]? }`    | No               |
+| `startNewTask`         | Starts a new task                       | `{ "configuration": RooCodeSettings, "text": string?, "images": string[]?, "newTab": boolean? }`    | No               |
 | `getCurrentTaskStack`  | Returns the current task stack          | `{}`                                          | No               |
 | `clearCurrentTask`     | Clears the current task                 | `{ "lastMessage": string? }`                  | No               |
 | `cancelCurrentTask`    | Cancels the current task                | `{}`                                          | No               |
+| `resumeTask`           | Resumes a paused task                   | `{}`                                          | Yes              |
+| `isTaskInHistory`      | Checks if a task is in history          | `{}`                                          | Yes              |
+| `cancelTask`           | Cancels a specific task                 | `{}`                                          | Yes              |
+| `getConfiguration`     | Gets current configuration              | `{}`                                          | No               |
+| `createProfile`        | Creates a new profile                   | `{ "name": string }`                          | No               |
+| `getProfiles`          | Gets available profiles                 | `{}`                                          | No               |
+| `setActiveProfile`     | Sets the active profile                 | `{ "name": string }`                          | No               |
+| `getActiveProfile`     | Gets the active profile                 | `{}`                                          | No               |
+| `deleteProfile`        | Deletes a profile                       | `{ "name": string }`                          | No               |
 | `sendMessage`          | Sends a message to the task             | `{ "message": string?, "images": string[]? }` | Yes              |
 | `pressPrimaryButton`   | Simulates pressing the primary button   | `{}`                                          | Yes              |
 | `pressSecondaryButton` | Simulates pressing the secondary button | `{}`                                          | Yes              |
@@ -159,8 +168,11 @@ Real-time updates from Roo Code API are sent as events with this structure:
 | `taskAskResponded`      | User responded to an ask | `{}`                                                            |
 | `taskAborted`           | Task has been aborted    | `{}`                                                            |
 | `taskSpawned`           | A sub-task was spawned   | `{ "childTaskId": string }`                                     |
-| `taskCompleted`         | Task has completed       | `{ "usage": TokenUsage }`                                       |
+| `taskCompleted`         | Task has completed       | `{ "usage": TokenUsage, "toolUsage": any }`                     |
 | `taskTokenUsageUpdated` | Token usage updated      | `{ "usage": TokenUsage }`                                       |
+| `taskCreated`           | A new task was created   | `{}`                                                            |
+| `taskModeSwitched`      | Task mode was switched   | `{ "modeSlug": string }`                                        |
+| `taskToolFailed`        | A tool failed            | `{ "toolName": string, "error": any }`                          |
 
 ### Streaming Message Flow
 

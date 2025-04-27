@@ -21,15 +21,18 @@ if (extension) {
 
 Here is the documentation for each method in the `RooCodeAPI` interface, as defined in `src/exports/roo-code.d.ts`:
 
-#### `startNewTask(task?: string, images?: string[]): Promise<string>`
+#### `startNewTask(params: { configuration: RooCodeSettings, text?: string, images?: string[], newTab?: boolean }): Promise<string>`
 
 **Description:**
-Starts a new task with an optional initial message and images.
+Starts a new task with optional initial message, images, configuration, and tab behavior.
 
 **Parameters:**
 
-- `task?`: `string` (optional) - Initial task message.
-- `images?`: `string[]` (optional) - Array of image data URIs (e.g., "data:image/webp;base64,...").
+- `params`: `{ configuration: RooCodeSettings, text?: string, images?: string[], newTab?: boolean }` - An object containing the task parameters.
+    - `configuration`: `RooCodeSettings` - The configuration settings to use for this task.
+    - `text?`: `string` (optional) - Initial task message.
+    - `images?`: `string[]` (optional) - Array of image data URIs (e.g., "data:image/webp;base64,...").
+    - `newTab?`: `boolean` (optional) - If true, opens the task in a new tab.
 
 **Return Type:**
 `Promise<string>` - The unique ID of the new task. This ID is used to interact with the task in subsequent API calls (e.g., `getMessages`, `getTokenUsage`).
@@ -171,6 +174,220 @@ Logs a message to the extension's output channel.
 
 ---
 
+#### `resumeTask(taskId: string): Promise<void>`
+
+**Description:**
+Resumes a paused task.
+
+**Parameters:**
+
+- `taskId`: `string` - The ID of the task to resume.
+
+**Return Type:**
+`Promise<void>` - Resolves when the task is resumed.
+
+---
+
+#### `isTaskInHistory(taskId: string): boolean`
+
+**Description:**
+Checks if a task with the given ID exists in the task history.
+
+**Parameters:**
+
+- `taskId`: `string` - The ID of the task to check.
+
+**Return Type:**
+`boolean` - `true` if the task is in history, `false` otherwise.
+
+---
+
+#### `getConfiguration(): RooCodeSettings`
+
+**Description:**
+Retrieves the current configuration settings for Roo Code.
+
+**Return Type:**
+`RooCodeSettings` - An object containing the current configuration settings.
+
+---
+
+#### `createProfile(name: string): Promise<void>`
+
+**Description:**
+Creates a new configuration profile with the specified name based on the current settings.
+
+**Parameters:**
+
+- `name`: `string` - The name for the new profile.
+
+**Return Type:**
+`Promise<void>` - Resolves when the profile is created.
+
+---
+
+#### `getProfiles(): Promise<string[]>`
+
+**Description:**
+Retrieves a list of available configuration profile names.
+
+**Return Type:**
+`Promise<string[]>` - A promise that resolves with an array of profile names.
+
+---
+
+#### `setActiveProfile(name: string): Promise<void>`
+
+**Description:**
+Sets the active configuration profile by name. This loads the settings from the specified profile.
+
+**Parameters:**
+
+- `name`: `string` - The name of the profile to activate.
+
+**Return Type:**
+`Promise<void>` - Resolves when the profile is activated.
+
+---
+
+#### `getActiveProfile(): Promise<string | undefined>`
+
+**Description:**
+Retrieves the name of the currently active configuration profile.
+
+**Return Type:**
+`Promise<string | undefined>` - A promise that resolves with the name of the active profile, or `undefined` if no profile is explicitly active.
+
+---
+
+#### `deleteProfile(name: string): Promise<void>`
+
+**Description:**
+Deletes a configuration profile by name.
+
+**Parameters:**
+
+- `name`: `string` - The name of the profile to delete.
+
+**Return Type:**
+`Promise<void>` - Resolves when the profile is deleted.
+
+---
+
+#### `resumeTask(taskId: string): Promise<void>`
+
+**Description:**
+Resumes a paused task.
+
+**Parameters:**
+
+- `taskId`: `string` - The ID of the task to resume.
+
+**Return Type:**
+`Promise<void>` - Resolves when the task is resumed.
+
+---
+
+#### `isTaskInHistory(taskId: string): boolean`
+
+**Description:**
+Checks if a task with the given ID exists in the task history.
+
+**Parameters:**
+
+- `taskId`: `string` - The ID of the task to check.
+
+**Return Type:**
+`boolean` - `true` if the task is in history, `false` otherwise.
+
+---
+
+#### `cancelTask(taskId: string): Promise<void>`
+
+**Description:**
+Cancels a specific task.
+
+**Parameters:**
+
+- `taskId`: `string` - The ID of the task to cancel.
+
+**Return Type:**
+`Promise<void>` - Resolves when the task is cancelled.
+
+---
+
+#### `getConfiguration(): RooCodeSettings`
+
+**Description:**
+Retrieves the current configuration settings for Roo Code.
+
+**Return Type:**
+`RooCodeSettings` - An object containing the current configuration settings.
+
+---
+
+#### `createProfile(name: string): Promise<void>`
+
+**Description:**
+Creates a new configuration profile with the specified name based on the current settings.
+
+**Parameters:**
+
+- `name`: `string` - The name for the new profile.
+
+**Return Type:**
+`Promise<void>` - Resolves when the profile is created.
+
+---
+
+#### `getProfiles(): Promise<string[]>`
+
+**Description:**
+Retrieves a list of available configuration profile names.
+
+**Return Type:**
+`Promise<string[]>` - A promise that resolves with an array of profile names.
+
+---
+
+#### `setActiveProfile(name: string): Promise<void>`
+
+**Description:**
+Sets the active configuration profile by name. This loads the settings from the specified profile.
+
+**Parameters:**
+
+- `name`: `string` - The name of the profile to activate.
+
+**Return Type:**
+`Promise<void>` - Resolves when the profile is activated.
+
+---
+
+#### `getActiveProfile(): Promise<string | undefined>`
+
+**Description:**
+Retrieves the name of the currently active configuration profile.
+
+**Return Type:**
+`Promise<string | undefined>` - A promise that resolves with the name of the active profile, or `undefined` if no profile is explicitly active.
+
+---
+
+#### `deleteProfile(name: string): Promise<void>`
+
+**Description:**
+Deletes a configuration profile by name.
+
+**Parameters:**
+
+- `name`: `string` - The name of the profile to delete.
+
+**Return Type:**
+`Promise<void>` - Resolves when the profile is deleted.
+
+---
+
 ### Usage Example
 
 Here's a comprehensive example demonstrating a typical interaction with the Roo Code API:
@@ -264,8 +481,11 @@ interface RooCodeEvents {
 	taskAskResponded: [taskId: string]
 	taskAborted: [taskId: string]
 	taskSpawned: [taskId: string, childTaskId: string]
-	taskCompleted: [taskId: string, usage: TokenUsage]
+	taskCompleted: [taskId: string, usage: TokenUsage, toolUsage: any]
 	taskTokenUsageUpdated: [taskId: string, usage: TokenUsage]
+	taskCreated: [taskId: string]
+	taskModeSwitched: [taskId: string, modeSlug: string]
+	taskToolFailed: [taskId: string, toolName: string, error: any]
 }
 ```
 
@@ -276,8 +496,11 @@ interface RooCodeEvents {
 - **`taskAskResponded`**: Emitted when the user responds to an 'ask' prompt. Payload: `[taskId: string]`.
 - **`taskAborted`**: Emitted when a task is aborted. Payload: `[taskId: string]`.
 - **`taskSpawned`**: Emitted when a new sub-task is spawned. Payload: `[taskId: string, childTaskId: string]`.
-- **`taskCompleted`**: Emitted when a task is completed. Payload: `[taskId: string, usage: TokenUsage]`.
+- **`taskCompleted`**: Emitted when a task is completed. Payload: `[taskId: string, usage: TokenUsage, toolUsage: any]`.
 - **`taskTokenUsageUpdated`**: Emitted when the token usage for a task is updated. Payload: `[taskId: string, usage: TokenUsage]`.
+- **`taskCreated`**: Emitted when a new task is created. Payload: `[taskId: string]`.
+- **`taskModeSwitched`**: Emitted when the mode of a task is switched. Payload: `[taskId: string, modeSlug: string]`.
+- **`taskToolFailed`**: Emitted when a tool execution fails within a task. Payload: `[taskId: string, toolName: string, error: any]`.
 
 **Example of handling other events:**
 
@@ -439,6 +662,32 @@ Roo Code API utilizes a streaming mechanism for delivering long responses. This 
 
 ---
 
+## Configuration and Profiles
+
+The Roo Code API allows external applications to manage the extension's configuration settings and utilize configuration profiles.
+
+### `RooCodeSettings`
+
+The configuration settings are represented by the `RooCodeSettings` type. This type encompasses various options that control Roo's behavior, such as API provider, model settings, and other preferences. You can find the complete definition of `RooCodeSettings` in the codebase (e.g., related to `ConfigurationValues` and settings management).
+
+The `setConfiguration(values: Partial<ConfigurationValues>): Promise<void>` method allows you to update a subset of these settings for the current task or globally, depending on the context of the API call.
+
+The new `getConfiguration(): RooCodeSettings` method allows you to retrieve the current active configuration.
+
+### Configuration Profiles
+
+Roo Code supports saving and loading configuration profiles, allowing users to quickly switch between different sets of settings. The API provides methods to manage these profiles:
+
+- `createProfile(name: string)`: Saves the current configuration as a new profile with the given name.
+- `getProfiles()`: Retrieves a list of all saved profile names.
+- `setActiveProfile(name: string)`: Loads and applies the settings from a saved profile, making it the active configuration.
+- `getActiveProfile()`: Returns the name of the currently active profile.
+- `deleteProfile(name: string)`: Removes a saved profile.
+
+These profile management features enable external applications to integrate with Roo's configuration system and provide profile switching capabilities.
+
+---
+
 ### Type Definitions
 
 Here are brief descriptions of some important types used by the Roo Code API:
@@ -471,6 +720,20 @@ Here are brief descriptions of some important types used by the Roo Code API:
     - `text?`: (Optional) A text description of the progress status.
 
 - **`ClineMessage`**: This interface represents a message in the chat history. See the detailed definition above, in the `message` event section.
+
+---
+
+## Implementation Details
+
+This section provides brief insights into some internal aspects of the Roo Code API implementation.
+
+### Logging
+
+The `log(message: string): void` method provides a way to send messages to the Roo Code extension's output channel. This is useful for debugging and monitoring the interaction between your external application and the extension. Messages sent via this method will appear in the "Roo Code" output channel in VS Code.
+
+### IPC Server Integration
+
+The `RooCodeAPI` class integrates with an Inter-Process Communication (IPC) server. This server facilitates communication between the main VS Code extension process and other processes, such as the webview or external applications connecting via the API. The API methods and event emissions are often mediated through this IPC layer, ensuring reliable communication across different parts of the Roo Code architecture. Details about the IPC server implementation can be found in the codebase (e.g., in files related to IPC communication).
 
 ---
 

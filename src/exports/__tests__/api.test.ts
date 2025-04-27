@@ -28,7 +28,7 @@ interface IpcServerConstructor {
 		log?: (...args: unknown[]) => void,
 	): IpcServer
 }
-const MockIpcServer = IpcServer as jest.MockedClass<IpcServerConstructor>
+const MockIpcServer = jest.mocked(IpcServer) as unknown as jest.MockedClass<IpcServerConstructor>
 const MockClineProvider = ClineProvider as jest.MockedClass<typeof ClineProvider>
 const mockExecuteCommand = vscode.commands.executeCommand as jest.Mock
 const _mockGetConfiguration = vscode.workspace.getConfiguration as jest.Mock // Prefix with _

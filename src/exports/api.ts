@@ -28,8 +28,8 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		provider: ClineProvider,
 		ipcConfig?: {
 			socketPath?: string
-			tcpHost?: string
-			tcpPort?: number | string
+			host?: string
+			port?: number | string
 		},
 		enableLogging = false,
 	) {
@@ -53,15 +53,15 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		this.registerListeners(this.sidebarProvider)
 
 		if (ipcConfig) {
-			const ipcOptions = ipcConfig.tcpPort
-				? { host: ipcConfig.tcpHost, port: ipcConfig.tcpPort }
+			const ipcOptions = ipcConfig.port
+				? { host: ipcConfig.host, port: ipcConfig.port }
 				: { socketPath: ipcConfig.socketPath }
 
 			const ipc = (this.ipc = new IpcServer(ipcOptions, this.log))
 
 			ipc.listen()
-			const connectionInfo = ipcConfig.tcpPort
-				? `host=${ipcConfig.tcpHost}, port=${ipcConfig.tcpPort}`
+			const connectionInfo = ipcConfig.port
+				? `host=${ipcConfig.host}, port=${ipcConfig.port}`
 				: `socketPath=${ipcConfig.socketPath}`
 			this.log(`[API] ipc server started: ${connectionInfo}, pid=${process.pid}, ppid=${process.ppid}`)
 

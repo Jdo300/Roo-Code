@@ -18,18 +18,26 @@ type IpcServerEvents = {
 }
 
 export class IpcServer extends EventEmitter<IpcServerEvents> {
-	private readonly _socketPath: string
+	private readonly _socketPath?: string
+	private readonly _host?: string
+	private readonly _port?: number | string
 	private readonly _log: (...args: unknown[]) => void
 	private readonly _clients: Map<string, Socket>
 
 	private _isListening = false
 
-	constructor(socketPath: string, log = console.log) {
+	constructor(options: { socketPath?: string; host?: string; port?: number | string }, log = console.log) {
 		super()
 
-		this._socketPath = socketPath
+		this._socketPath = options.socketPath
+		this._host = options.host
+		this._port = options.port
 		this._log = log
 		this._clients = new Map()
+
+		if (!this._socketPath && (!this._host || !this._port)) {
+			throw new Error("Either socketPath or both host and port must be provided")
+		}
 	}
 
 	public listen() {
@@ -37,11 +45,21 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 
 		ipc.config.silent = true
 
-		ipc.serve(this.socketPath, () => {
+		const serverCallback = () => {
 			ipc.server.on("connect", (socket) => this.onConnect(socket))
 			ipc.server.on("socket.disconnected", (socket) => this.onDisconnect(socket))
 			ipc.server.on("message", (data) => this.onMessage(data))
-		})
+		}
+
+		if (this._socketPath) {
+			ipc.serve(this._socketPath, serverCallback)
+		} else if (this._host && this._port) {
+			ipc.serveNet(
+				this._host,
+				typeof this._port === "string" ? parseInt(this._port, 10) : this._port,
+				serverCallback,
+			)
+		}
 
 		ipc.server.start()
 	}

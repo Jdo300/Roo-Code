@@ -99,6 +99,10 @@ const vscode = {
 			this.pattern = pattern
 		}
 	},
+	CodeActionKind: {
+		QuickFix: "quickfix",
+		RefactorRewrite: "refactor.rewrite",
+	},
 }
 
 module.exports = vscode

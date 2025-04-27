@@ -3,16 +3,18 @@ module.exports = {
 	preset: "ts-jest",
 	testEnvironment: "node",
 	moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
+	extensionsToTreatAsEsm: [".ts", ".tsx"],
 	transform: {
 		"^.+\\.tsx?$": [
 			"ts-jest",
 			{
 				tsconfig: {
-					module: "CommonJS",
+					module: "ESNext",
 					moduleResolution: "node",
 					esModuleInterop: true,
 					allowJs: true,
 				},
+				useESM: true,
 				diagnostics: false,
 				isolatedModules: true,
 			},
@@ -36,13 +38,15 @@ module.exports = {
 		"^default-shell$": "<rootDir>/src/__mocks__/default-shell.js",
 		"^os-name$": "<rootDir>/src/__mocks__/os-name.js",
 		"^strip-bom$": "<rootDir>/src/__mocks__/strip-bom.js",
+		"^evals/packages/types/src/ipc$": "<rootDir>/src/__mocks__/evals/packages/types/src/ipc.ts",
 		"^@roo/(.*)$": "<rootDir>/src/$1",
 		"^@src/(.*)$": "<rootDir>/webview-ui/src/$1",
 	},
 	transformIgnorePatterns: [
 		"node_modules/(?!(@modelcontextprotocol|delay|p-wait-for|serialize-error|strip-ansi|default-shell|os-name|strip-bom)/)",
+		"evals/",
 	],
-	roots: ["<rootDir>/src", "<rootDir>/webview-ui/src"],
+	roots: ["<rootDir>/src", "<rootDir>/webview-ui/src", "<rootDir>/evals"],
 	modulePathIgnorePatterns: [".vscode-test"],
 	reporters: [["jest-simple-dot-reporter", {}]],
 	setupFiles: ["<rootDir>/src/__mocks__/jest.setup.ts"],

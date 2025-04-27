@@ -1,6 +1,7 @@
 import { API } from "../api"
 import { IpcServer } from "../ipc"
 import { ClineProvider } from "../../core/webview/ClineProvider"
+import { Cline } from "../../core/Cline"
 import { IpcMessageType, TaskCommandName, TaskCommand, IpcOrigin } from "evals/packages/types/src/ipc" // Removed TaskEvent import
 import { RooCodeEventName, RooCodeEvents, ToolName } from "evals/packages/types/src/roo-code"
 import * as vscode from "vscode"
@@ -40,12 +41,83 @@ describe("API", () => {
 	let mockIpcInstance: jest.Mocked<IpcServer>
 	let mockExtensionContext: any
 	let mockContextProxy: any
+	let mockCline: EventEmitter & {
+		taskId: string
+		instanceId: string
+		rootTask?: any
+		parentTask?: any
+		taskNumber: number
+		isPaused: boolean
+		pausedModeSlug: string
+		pauseInterval?: NodeJS.Timeout
+		apiConfiguration: {
+			apiProvider: string
+			apiKey: string
+		}
+		api: {
+			send: jest.Mock
+		}
+		promptCacheKey: string
+		rooIgnoreController?: any
+		fileContextTracker: {
+			addFile: jest.Mock
+			removeFile: jest.Mock
+		}
+		urlContentFetcher: {
+			fetch: jest.Mock
+		}
+		browserSession: {
+			launch: jest.Mock
+			close: jest.Mock
+		}
+		didEditFile: boolean
+		customInstructions?: string
+		diffStrategy?: any
+		diffEnabled: boolean
+		fuzzyMatchThreshold: number
+		apiConversationHistory: any[]
+		clineMessages: any[]
+		consecutiveMistakeCount: number
+		consecutiveMistakeLimit: number
+		consecutiveMistakeCountForApplyDiff: Map<string, number>
+		providerRef: WeakRef<any>
+		globalStoragePath: string
+		abort: boolean
+		didFinishAbortingStream: boolean
+		abandoned: boolean
+		diffViewProvider: {
+			show: jest.Mock
+		}
+		lastApiRequestTime?: number
+		isInitialized: boolean
+		enableCheckpoints: boolean
+		checkpointService?: any
+		checkpointServiceInitializing: boolean
+		isWaitingForFirstChunk: boolean
+		isStreaming: boolean
+		currentStreamingContentIndex: number
+		assistantMessageContent: any[]
+		presentAssistantMessageLocked: boolean
+		presentAssistantMessageHasPendingUpdates: boolean
+		userMessageContent: any[]
+		userMessageContentReady: boolean
+		didRejectTool: boolean
+		didAlreadyUseTool: boolean
+		didCompleteReadingStream: boolean
+		toolUsage: Record<string, any>
+		fileLog: jest.Mock
+	}
 
-	beforeEach(() => {
+	beforeEach(async () => {
+		// Set up basic mocks
 		mockOutputChannel = { appendLine: jest.fn(), show: jest.fn() }
-		mockExtensionContext = { extensionUri: "fake/uri" }
+		mockExtensionContext = {
+			extensionUri: "fake/uri",
+			globalStorageUri: { fsPath: "/mock/storage" },
+		}
 		mockContextProxy = { initialize: jest.fn(), extensionUri: "fake/uri" }
 
+		// Create mock sidebar provider
 		mockSidebarProvider = new MockClineProvider(
 			mockExtensionContext,
 			mockOutputChannel,
@@ -53,26 +125,135 @@ describe("API", () => {
 			mockContextProxy,
 		) as jest.Mocked<ClineProvider & EventEmitter<RooCodeEvents>>
 
-		// Mock the IPC server instance created in the constructor
+		// Mock getValues
+		jest.spyOn(mockSidebarProvider, "getValues").mockReturnValue({
+			listApiConfigMeta: [
+				{
+					id: "mock-id",
+					name: "default",
+					apiProvider: "openai",
+				},
+			],
+			currentApiConfigName: "default",
+			allowedCommands: [],
+			apiProvider: "openai",
+			customInstructions: "",
+			diffEnabled: false,
+			enableCheckpoints: false,
+			experiments: {
+				powerSteering: false,
+			},
+			fuzzyMatchThreshold: 0.8,
+			mode: "code",
+		})
+
+		// Mock IPC server
 		mockIpcInstance = {
 			listen: jest.fn(),
 			on: jest.fn(),
 			broadcast: jest.fn(),
-			of: jest.fn().mockReturnThis(), // Chainable method
+			of: jest.fn().mockReturnThis(),
 			emit: jest.fn(),
 		} as any
-		// Explicitly define the log parameter as optional with the correct type
-		MockIpcServer.mockImplementation(
-			(
-				_options: { socketPath?: string; host?: string; port?: number | string },
-				_log?: (...args: unknown[]) => void,
-			) => {
-				// Simulate the instance created in the constructor
-				return mockIpcInstance
-			},
-		)
 
+		// Mock IPC server constructor
+		MockIpcServer.mockImplementation(() => mockIpcInstance)
+
+		// Create mock Cline instance with required methods
+		const clineBase = {
+			cwd: "/mock/cwd",
+			getSavedApiConversationHistory: jest.fn(),
+			addToApiConversationHistory: jest.fn(),
+			overwriteApiConversationHistory: jest.fn(),
+			fileLog: jest.fn(),
+		}
+
+		// Create mock Cline instance
+		mockCline = Object.assign(new EventEmitter(), {
+			...clineBase,
+			taskId: "mock-task-id",
+			instanceId: "mock-instance",
+			rootTask: undefined,
+			parentTask: undefined,
+			taskNumber: 1,
+			isPaused: false,
+			pausedModeSlug: "code",
+			pauseInterval: undefined,
+			apiConfiguration: {
+				apiProvider: "openai",
+				apiKey: "mock-key",
+			},
+			api: {
+				send: jest.fn(),
+			},
+			promptCacheKey: "mock-cache-key",
+			rooIgnoreController: undefined,
+			fileContextTracker: {
+				addFile: jest.fn(),
+				removeFile: jest.fn(),
+			},
+			urlContentFetcher: {
+				fetch: jest.fn(),
+			},
+			browserSession: {
+				launch: jest.fn(),
+				close: jest.fn(),
+			},
+			didEditFile: false,
+			customInstructions: undefined,
+			diffStrategy: undefined,
+			diffEnabled: false,
+			fuzzyMatchThreshold: 1.0,
+			apiConversationHistory: [],
+			clineMessages: [],
+			consecutiveMistakeCount: 0,
+			consecutiveMistakeLimit: 3,
+			consecutiveMistakeCountForApplyDiff: new Map(),
+			providerRef: new WeakRef(mockSidebarProvider),
+			globalStoragePath: "/mock/storage",
+			abort: false,
+			didFinishAbortingStream: false,
+			abandoned: false,
+			diffViewProvider: {
+				show: jest.fn(),
+			},
+			lastApiRequestTime: undefined,
+			isInitialized: true,
+			enableCheckpoints: false,
+			checkpointService: undefined,
+			checkpointServiceInitializing: false,
+			isWaitingForFirstChunk: false,
+			isStreaming: false,
+			currentStreamingContentIndex: 0,
+			assistantMessageContent: [],
+			presentAssistantMessageLocked: false,
+			presentAssistantMessageHasPendingUpdates: false,
+			userMessageContent: [],
+			userMessageContentReady: false,
+			didRejectTool: false,
+			didAlreadyUseTool: false,
+			didCompleteReadingStream: false,
+			toolUsage: {},
+			fileLog: jest.fn(),
+		} as unknown as Cline)
+
+		// Create API instance
 		api = new API(mockOutputChannel, mockSidebarProvider, { socketPath: "/fake/socket/path" }, false)
+
+		// Wait for API to initialize
+		await new Promise((resolve) => setTimeout(resolve, 0))
+
+		// Register event listeners
+		mockSidebarProvider.emit("clineCreated", mockCline)
+
+		// Wait for event listeners to register
+		await new Promise((resolve) => setTimeout(resolve, 0))
+
+		// Add Cline to API's taskMap
+		api["taskMap"].set("mock-task-id", mockSidebarProvider)
+
+		// Clear any previous calls to broadcast
+		mockIpcInstance.broadcast.mockClear()
 	})
 
 	afterEach(() => {
@@ -504,231 +685,221 @@ describe("API", () => {
 
 	// Test TaskEvent broadcasting
 	describe("TaskEvent broadcasting", () => {
-		it("should broadcast TaskStarted event", () => {
-			const taskId = "task123"
-			const expectedPayload = [taskId]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskStarted, taskId)
+		it("should broadcast TaskStarted event", async () => {
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskStarted, mockCline.taskId)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskStarted,
-					payload: expectedPayload,
+					payload: ["mock-task-id"],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast Message event", () => {
-			const taskId = "task456"
+		it("should broadcast Message event", async () => {
 			const message = {
-				message: { type: "say" as const, ts: Date.now(), text: "hello", partial: false },
-				taskId,
-				action: "created" as const,
+				type: "say" as const,
+				text: "hello",
+				partial: false,
+				ts: Date.now(),
 			}
-			const expectedPayload = [message]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.Message, message)
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.Message, { taskId: mockCline.taskId, action: "created", message })
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.Message,
-					payload: expectedPayload,
+					payload: [{ taskId: "mock-task-id", action: "created", message }],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast TaskModeSwitched event", () => {
-			const taskId = "task789"
+		it("should broadcast TaskModeSwitched event", async () => {
 			const mode = "code"
-			const expectedPayload = [taskId, mode]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskModeSwitched, taskId, mode)
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskModeSwitched, mockCline.taskId, mode)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskModeSwitched,
-					payload: expectedPayload,
+					payload: ["mock-task-id", mode],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast TaskAskResponded event", () => {
-			const taskId = "task101"
-			const expectedPayload = [taskId]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskAskResponded, taskId)
+		it("should broadcast TaskAskResponded event", async () => {
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskAskResponded, mockCline.taskId)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskAskResponded,
-					payload: expectedPayload,
+					payload: ["mock-task-id"],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast TaskAborted event", () => {
-			const taskId = "task112"
-			const expectedPayload = [taskId]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskAborted, taskId)
+		it("should broadcast TaskAborted event", async () => {
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskAborted, mockCline.taskId)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskAborted,
-					payload: expectedPayload,
+					payload: ["mock-task-id"],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast TaskCompleted event", () => {
-			const taskId = "task131"
+		it("should broadcast TaskCompleted event", async () => {
 			const tokenUsage = {
-				totalCost: 1,
 				totalTokensIn: 100,
 				totalTokensOut: 50,
 				contextTokens: 20,
-				totalCacheWrites: 0,
 				totalCacheReads: 0,
+				totalCacheWrites: 0,
+				totalCost: 1,
 			}
-			const toolUsage = { read_file: { attempts: 1, failures: 0 }, write_to_file: { attempts: 1, failures: 0 } }
-			const expectedPayload = [taskId, tokenUsage, toolUsage]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskCompleted, taskId, tokenUsage, toolUsage)
+			const toolUsage = {
+				read_file: { attempts: 1, failures: 0 },
+				write_to_file: { attempts: 1, failures: 0 },
+			}
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskCompleted, mockCline.taskId, tokenUsage, toolUsage)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskCompleted,
-					payload: expectedPayload,
+					payload: ["mock-task-id", tokenUsage, toolUsage],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast TaskSpawned event", () => {
-			const parentTaskId = "task141"
+		it("should broadcast TaskSpawned event", async () => {
 			const childTaskId = "task142"
-			const expectedPayload = [parentTaskId, childTaskId]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskSpawned, parentTaskId, childTaskId)
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskSpawned, mockCline.taskId, childTaskId)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskSpawned,
-					payload: expectedPayload,
+					payload: ["mock-task-id", childTaskId],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast TaskPaused event", () => {
-			const taskId = "task151"
-			const expectedPayload = [taskId]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskPaused, taskId)
+		it("should broadcast TaskPaused event", async () => {
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskPaused, mockCline.taskId)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskPaused,
-					payload: expectedPayload,
+					payload: ["mock-task-id"],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast TaskUnpaused event", () => {
-			const taskId = "task161"
-			const expectedPayload = [taskId]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskUnpaused, taskId)
+		it("should broadcast TaskUnpaused event", async () => {
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskUnpaused, mockCline.taskId)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskUnpaused,
-					payload: expectedPayload,
+					payload: ["mock-task-id"],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast TaskTokenUsageUpdated event", () => {
-			const taskId = "task171"
+		it("should broadcast TaskTokenUsageUpdated event", async () => {
 			const usage = {
-				totalCost: 0.5,
 				totalTokensIn: 50,
 				totalTokensOut: 25,
 				contextTokens: 10,
-				totalCacheWrites: 0,
 				totalCacheReads: 0,
+				totalCacheWrites: 0,
+				totalCost: 0.5,
 			}
-			const expectedPayload = [taskId, usage]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskTokenUsageUpdated, taskId, usage)
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskTokenUsageUpdated, mockCline.taskId, usage)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskTokenUsageUpdated,
-					payload: expectedPayload,
+					payload: ["mock-task-id", usage],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast TaskToolFailed event", () => {
-			const taskId = "task181"
+		it("should broadcast TaskToolFailed event", async () => {
 			const tool: ToolName = "read_file"
 			const error = "Tool failed message"
-			const expectedPayload = [taskId, tool, error]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskToolFailed, taskId, tool, error)
+			// Wait for event listeners to be registered
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskToolFailed, mockCline.taskId, tool, error)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskToolFailed,
-					payload: expectedPayload,
+					payload: ["mock-task-id", tool, error],
 				},
 				origin: IpcOrigin.Server,
 			})
 		})
 
-		it("should broadcast TaskCreated event", () => {
-			const taskId = "task191"
-			const expectedPayload = [taskId]
-
-			// Simulate the ClineProvider emitting the event
-			mockSidebarProvider.emit(RooCodeEventName.TaskCreated, taskId)
+		it("should broadcast TaskCreated event", async () => {
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			api.emit(RooCodeEventName.TaskCreated, mockCline.taskId as string)
 
 			expect(mockIpcInstance.broadcast).toHaveBeenCalledWith({
 				type: IpcMessageType.TaskEvent,
 				data: {
 					eventName: RooCodeEventName.TaskCreated,
-					payload: expectedPayload,
+					payload: ["mock-task-id"],
 				},
 				origin: IpcOrigin.Server,
 			})

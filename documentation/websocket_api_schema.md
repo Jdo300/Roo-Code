@@ -1,24 +1,24 @@
-## Roo Code WebSocket API Schema Documentation
+## Roo Code RPC/TCP API Schema Documentation
 
 ### Introduction
 
-This document defines the JSON schema for the Roo Code WebSocket API, which enables external applications to communicate directly with the Roo Code VS Code extension. This API allows for programmatic control of Roo Code's functionalities and real-time interaction, including sending commands and receiving streamed responses and events.
+This document defines the JSON schema for the Roo Code RPC/TCP API, which enables external applications to communicate directly with the Roo Code VS Code extension using node-ipc. This API allows for programmatic control of Roo Code's functionalities and real-time interaction, including sending commands and receiving streamed responses and events.
 
-The WebSocket API is designed with a focus on:
+The RPC/TCP API is designed with a focus on:
 
 - **Clear message types:** Using a unified `type` field for easy routing and handling
 - **Direct mapping to RooCodeAPI:** Commands and events map directly to RooCodeAPI methods and events
 - **Comprehensive streaming support:** Handling partial updates for real-time message delivery
 - **Robust error handling:** Structured error responses with codes and messages
-- **Asynchronous request tracking:** Using request IDs to correlate requests and responses
+- **Client identification:** Using clientId for message routing and acknowledgment
 
 ### Message Types Overview
 
-All WebSocket messages (in both directions) use a unified `type` field to categorize the message:
+All IPC messages use a unified `type` field to categorize the message:
 
-1. **`command`:** Client-to-server messages to invoke Roo Code API methods
-2. **`response`:** Server-to-client messages in response to commands
-3. **`event`:** Server-to-client messages for real-time updates from Roo Code
+1. **`TaskCommand`:** Client-to-server messages to invoke Roo Code API methods
+2. **`TaskEvent`:** Server-to-client messages for real-time updates from Roo Code
+3. **`Ack`:** Server acknowledgment of client connection
 
 ### Client-to-Server Command Schema
 
@@ -26,396 +26,138 @@ All client commands follow this structure:
 
 ```json
 {
-  "type": "command",
-  "commandName": "startNewTask",
-  "taskId": "optional-task-id",
-  "arguments": {
-    "text": "Write a Python function...",
-    "images": [...]
-  },
-  "requestId": "unique-request-id"
+	"type": "TaskCommand",
+	"origin": "client",
+	"clientId": "unique-client-id",
+	"data": {
+		"commandName": "StartNewTask",
+		"data": {
+			"configuration": {},
+			"text": "Write a Python function...",
+			"images": []
+		}
+	}
 }
 ```
 
 **Fields:**
 
-- **`type`** (string, required): Always `"command"` for client-initiated commands.
-- **`commandName`** (string, required): The name of the command to execute, directly mapping to RooCodeAPI methods. See [Supported Commands](#supported-commands) below.
-- **`taskId`** (string, optional): The ID of the task this command relates to. Required for task-specific commands (e.g., `sendMessage`, `getMessages`), omitted for global commands (e.g., `startNewTask`).
-- **`arguments`** (object, optional): Parameters for the command, structured according to the corresponding RooCodeAPI method's parameters.
-- **`requestId`** (string, required): A client-generated unique identifier for tracking asynchronous requests and matching responses.
+- **`type`** (string, required): Always `"TaskCommand"` for client-initiated commands
+- **`origin`** (string, required): Always `"client"` for client messages
+- **`clientId`** (string, required): Unique identifier for the client
+- **`data`** (object, required): Contains the command details
+    - **`commandName`** (string, required): The name of the command to execute
+    - **`data`** (any, required): Command-specific parameters
 
 #### Supported Commands
 
-| commandName            | Description                             | Arguments                                     | taskId Required? |
-| ---------------------- | --------------------------------------- | --------------------------------------------- | ---------------- |
-| `startNewTask`         | Starts a new task                       | `{ "configuration": RooCodeSettings, "text": string?, "images": string[]?, "newTab": boolean? }`    | No               |
-| `getCurrentTaskStack`  | Returns the current task stack          | `{}`                                          | No               |
-| `clearCurrentTask`     | Clears the current task                 | `{ "lastMessage": string? }`                  | No               |
-| `cancelCurrentTask`    | Cancels the current task                | `{}`                                          | No               |
-| `resumeTask`           | Resumes a paused task                   | `{}`                                          | Yes              |
-| `isTaskInHistory`      | Checks if a task is in history          | `{}`                                          | Yes              |
-| `cancelTask`           | Cancels a specific task                 | `{}`                                          | Yes              |
-| `getConfiguration`     | Gets current configuration              | `{}`                                          | No               |
-| `createProfile`        | Creates a new profile                   | `{ "name": string }`                          | No               |
-| `getProfiles`          | Gets available profiles                 | `{}`                                          | No               |
-| `setActiveProfile`     | Sets the active profile                 | `{ "name": string }`                          | No               |
-| `getActiveProfile`     | Gets the active profile                 | `{}`                                          | No               |
-| `deleteProfile`        | Deletes a profile                       | `{ "name": string }`                          | No               |
-| `sendMessage`          | Sends a message to the task             | `{ "message": string?, "images": string[]? }` | Yes              |
-| `pressPrimaryButton`   | Simulates pressing the primary button   | `{}`                                          | Yes              |
-| `pressSecondaryButton` | Simulates pressing the secondary button | `{}`                                          | Yes              |
-| `setConfiguration`     | Sets configuration values               | `{ "values": { [key: string]: any } }`        | No               |
-| `getMessages`          | Gets messages for a task                | `{}`                                          | Yes              |
-| `getTokenUsage`        | Gets token usage for a task             | `{}`                                          | Yes              |
-| `isReady`              | Checks if the API is ready              | `{}`                                          | No               |
-
-### Server-to-Client Response Schema
-
-All server responses follow this structure:
-
-```json
-{
-	"type": "response",
-	"status": "success",
-	"requestId": "matching-request-id",
-	"commandName": "startNewTask",
-	"data": {
-		"taskId": "new-task-123"
-	},
-	"error": {
-		"code": "INVALID_PARAMETER",
-		"message": "Invalid task text provided."
-	}
-}
-```
-
-**Fields:**
-
-- **`type`** (string, required): Always `"response"` for server-generated responses to commands.
-- **`status`** (string, required): Either `"success"` or `"error"` indicating if the command was executed successfully.
-- **`requestId`** (string, required): The same `requestId` from the original command, used for correlation.
-- **`commandName`** (string, required): The same `commandName` from the original command, for context.
-- **`data`** (object, conditional): Present if `status` is `"success"`. Contains command-specific response data. Structure varies based on the command.
-- **`error`** (object, conditional): Present if `status` is `"error"`. Contains error details.
-    - **`code`** (string, required): Error code identifying the error type.
-    - **`message`** (string, required): Human-readable error message.
-
-#### Response Data by Command
-
-| commandName            | Response Data Structure           | Example                                      |
-| ---------------------- | --------------------------------- | -------------------------------------------- |
-| `startNewTask`         | `{ "taskId": string }`            | `{ "taskId": "task-123" }`                   |
-| `getCurrentTaskStack`  | `{ "taskStack": string[] }`       | `{ "taskStack": ["task-123", "task-456"] }`  |
-| `clearCurrentTask`     | `{}` or `{ "result": "success" }` | `{ "result": "success" }`                    |
-| `cancelCurrentTask`    | `{}` or `{ "result": "success" }` | `{ "result": "success" }`                    |
-| `sendMessage`          | `{}` or `{ "result": "success" }` | `{ "result": "success" }`                    |
-| `pressPrimaryButton`   | `{}` or `{ "result": "success" }` | `{ "result": "success" }`                    |
-| `pressSecondaryButton` | `{}` or `{ "result": "success" }` | `{ "result": "success" }`                    |
-| `setConfiguration`     | `{}` or `{ "result": "success" }` | `{ "result": "success" }`                    |
-| `getMessages`          | `{ "messages": ClineMessage[] }`  | `{ "messages": [...] }`                      |
-| `getTokenUsage`        | `{ "usage": TokenUsage }`         | `{ "usage": { "totalTokensIn": 100, ... } }` |
-| `isReady`              | `{ "ready": boolean }`            | `{ "ready": true }`                          |
-
-#### Error Codes
-
-| Error Code          | Description                         |
-| ------------------- | ----------------------------------- |
-| `SERVER_ERROR`      | Internal server error               |
-| `INVALID_COMMAND`   | The command does not exist          |
-| `INVALID_PARAMETER` | Invalid or missing parameter        |
-| `TASK_NOT_FOUND`    | Specified task ID does not exist    |
-| `API_NOT_READY`     | Roo Code API is not ready           |
-| `EXECUTION_ERROR`   | Error executing the command         |
-| `PERMISSION_DENIED` | Permission denied for the operation |
+| commandName            | Description                             | Data Structure                                                                           |
+| ---------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `StartNewTask`         | Starts a new task                       | `{ configuration: RooCodeSettings, text?: string, images?: string[], newTab?: boolean }` |
+| `CancelTask`           | Cancels a specific task                 | `string` (taskId)                                                                        |
+| `CloseTask`            | Closes a specific task                  | `string` (taskId)                                                                        |
+| `GetCurrentTaskStack`  | Returns the current task stack          | `undefined`                                                                              |
+| `ClearCurrentTask`     | Clears the current task                 | `string?` (lastMessage)                                                                  |
+| `CancelCurrentTask`    | Cancels the current task                | `undefined`                                                                              |
+| `SendMessage`          | Sends a message to the task             | `{ message?: string, images?: string[] }`                                                |
+| `PressPrimaryButton`   | Simulates pressing the primary button   | `undefined`                                                                              |
+| `PressSecondaryButton` | Simulates pressing the secondary button | `undefined`                                                                              |
+| `SetConfiguration`     | Sets configuration values               | `any` (configuration values)                                                             |
+| `IsReady`              | Checks if the API is ready              | `undefined`                                                                              |
+| `GetMessages`          | Gets messages for a task                | `string` (taskId)                                                                        |
+| `GetTokenUsage`        | Gets token usage for a task             | `string` (taskId)                                                                        |
+| `Log`                  | Logs a message                          | `string` (message)                                                                       |
+| `ResumeTask`           | Resumes a paused task                   | `string` (taskId)                                                                        |
+| `IsTaskInHistory`      | Checks if a task is in history          | `string` (taskId)                                                                        |
+| `CreateProfile`        | Creates a new profile                   | `string` (name)                                                                          |
+| `GetProfiles`          | Gets available profiles                 | `undefined`                                                                              |
+| `SetActiveProfile`     | Sets the active profile                 | `string` (name)                                                                          |
+| `getActiveProfile`     | Gets the active profile                 | `undefined`                                                                              |
+| `DeleteProfile`        | Deletes a profile                       | `string` (name)                                                                          |
 
 ### Server-to-Client Event Schema
 
-Real-time updates from Roo Code API are sent as events with this structure:
+Server events follow this structure:
 
 ```json
 {
-	"type": "event",
-	"eventName": "message",
-	"taskId": "task-123",
-	"payload": {
-		"action": "updated",
-		"message": {
-			"type": "say",
-			"say": "text",
-			"text": "Streaming chunk of text...",
-			"partial": true
-		}
+	"type": "TaskEvent",
+	"origin": "server",
+	"relayClientId": "optional-client-id",
+	"data": {
+		"eventName": "Message",
+		"payload": {
+			"action": "created",
+			"message": {
+				"type": "say",
+				"say": "text",
+				"text": "Response text...",
+				"partial": false
+			}
+		},
+		"taskId": 123
 	}
 }
 ```
 
 **Fields:**
 
-- **`type`** (string, required): Always `"event"` for server-push events.
-- **`eventName`** (string, required): Name of the event, directly mapping to RooCodeEvents names.
-- **`taskId`** (string, optional): The ID of the task this event relates to (if applicable).
-- **`payload`** (object, required): Event-specific data. Structure varies based on the `eventName` and mirrors the corresponding RooCodeEvents payload.
+- **`type`** (string, required): Always `"TaskEvent"` for server events
+- **`origin`** (string, required): Always `"server"` for server messages
+- **`relayClientId`** (string, optional): Client ID if event is specific to a client
+- **`data`** (object, required): Contains the event details
+    - **`eventName`** (string, required): Name of the event
+    - **`payload`** (object, required): Event-specific data
+    - **`taskId`** (number, optional): ID of the related task
 
 #### Supported Events
 
-| eventName               | Description              | Payload Structure                                               |
-| ----------------------- | ------------------------ | --------------------------------------------------------------- |
-| `message`               | A new message or update  | `{ "action": "created" \| "updated", "message": ClineMessage }` |
-| `taskStarted`           | Task has started         | `{}`                                                            |
-| `taskPaused`            | Task has been paused     | `{}`                                                            |
-| `taskUnpaused`          | Task has been unpaused   | `{}`                                                            |
-| `taskAskResponded`      | User responded to an ask | `{}`                                                            |
-| `taskAborted`           | Task has been aborted    | `{}`                                                            |
-| `taskSpawned`           | A sub-task was spawned   | `{ "childTaskId": string }`                                     |
-| `taskCompleted`         | Task has completed       | `{ "usage": TokenUsage, "toolUsage": any }`                     |
-| `taskTokenUsageUpdated` | Token usage updated      | `{ "usage": TokenUsage }`                                       |
-| `taskCreated`           | A new task was created   | `{}`                                                            |
-| `taskModeSwitched`      | Task mode was switched   | `{ "modeSlug": string }`                                        |
-| `taskToolFailed`        | A tool failed            | `{ "toolName": string, "error": any }`                          |
+| eventName               | Description              | Payload Structure                                           |
+| ----------------------- | ------------------------ | ----------------------------------------------------------- |
+| `Message`               | A new message or update  | `{ action: "created" \| "updated", message: ClineMessage }` |
+| `TaskCreated`           | A new task was created   | `{}`                                                        |
+| `TaskStarted`           | Task has started         | `{}`                                                        |
+| `TaskModeSwitched`      | Task mode was switched   | `{ modeSlug: string }`                                      |
+| `TaskPaused`            | Task has been paused     | `{}`                                                        |
+| `TaskUnpaused`          | Task has been unpaused   | `{}`                                                        |
+| `TaskAskResponded`      | User responded to an ask | `{}`                                                        |
+| `TaskAborted`           | Task has been aborted    | `{}`                                                        |
+| `TaskSpawned`           | A sub-task was spawned   | `{ childTaskId: string }`                                   |
+| `TaskCompleted`         | Task has completed       | `{ usage: TokenUsage, toolUsage: any }`                     |
+| `TaskTokenUsageUpdated` | Token usage updated      | `{ usage: TokenUsage }`                                     |
+| `TaskToolFailed`        | A tool failed            | `{ toolName: string, error: any }`                          |
 
-### Streaming Message Flow
+### Connection Handshake
 
-For streaming responses (particularly with the `message` event), the flow works as follows:
-
-1. Server sends an initial event with:
-
-    ```json
-    {
-      "type": "event",
-      "eventName": "message",
-      "taskId": "task-123",
-      "payload": {
-        "action": "created",
-        "message": { ... }
-      }
-    }
-    ```
-
-2. For streaming, server sends updates with:
-
-    ```json
-    {
-      "type": "event",
-      "eventName": "message",
-      "taskId": "task-123",
-      "payload": {
-        "action": "updated",
-        "message": {
-          "text": "Partial chunk...",
-          "partial": true,
-          ...
-        }
-      }
-    }
-    ```
-
-3. Final update with `message.partial` set to `false`:
-
-    ```json
-    {
-      "type": "event",
-      "eventName": "message",
-      "taskId": "task-123",
-      "payload": {
-        "action": "updated",
-        "message": {
-          "text": "Final chunk",
-          "partial": false,
-          ...
-        }
-      }
-    }
-    ```
-
-### Usage Examples
-
-#### Example 1: Starting a New Task
-
-**Client sends:**
+When a client connects, the server responds with an acknowledgment:
 
 ```json
 {
-	"type": "command",
-	"commandName": "startNewTask",
-	"arguments": {
-		"text": "Create a Python function to calculate Fibonacci numbers"
-	},
-	"requestId": "req1"
-}
-```
-
-**Server responds:**
-
-```json
-{
-	"type": "response",
-	"status": "success",
-	"requestId": "req1",
-	"commandName": "startNewTask",
+	"type": "Ack",
+	"origin": "server",
 	"data": {
-		"taskId": "task-123"
+		"clientId": "assigned-client-id",
+		"pid": 1234,
+		"ppid": 5678
 	}
 }
 ```
 
-**Server then sends events (simplified):**
+### Error Handling
 
-```json
-{
-	"type": "event",
-	"eventName": "taskStarted",
-	"taskId": "task-123",
-	"payload": {}
-}
-```
+Errors are communicated through TaskEvents with appropriate error payloads. Common error scenarios include:
 
-```json
-{
-	"type": "event",
-	"eventName": "message",
-	"taskId": "task-123",
-	"payload": {
-		"action": "created",
-		"message": {
-			"type": "say",
-			"say": "text",
-			"text": "I'll create a Python function to calculate Fibonacci numbers.",
-			"partial": false
-		}
-	}
-}
-```
-
-#### Example 2: Streaming Response
-
-**Client sends:**
-
-```json
-{
-	"type": "command",
-	"commandName": "sendMessage",
-	"taskId": "task-123",
-	"arguments": {
-		"message": "Can you explain how the function works?"
-	},
-	"requestId": "req2"
-}
-```
-
-**Server responds:**
-
-```json
-{
-	"type": "response",
-	"status": "success",
-	"requestId": "req2",
-	"commandName": "sendMessage",
-	"data": {
-		"result": "success"
-	}
-}
-```
-
-**Server then streams a response (multiple events):**
-
-```json
-{
-	"type": "event",
-	"eventName": "message",
-	"taskId": "task-123",
-	"payload": {
-		"action": "created",
-		"message": {
-			"type": "say",
-			"say": "text",
-			"text": "",
-			"partial": true
-		}
-	}
-}
-```
-
-```json
-{
-	"type": "event",
-	"eventName": "message",
-	"taskId": "task-123",
-	"payload": {
-		"action": "updated",
-		"message": {
-			"type": "say",
-			"say": "text",
-			"text": "The Fibonacci function works by",
-			"partial": true
-		}
-	}
-}
-```
-
-```json
-{
-	"type": "event",
-	"eventName": "message",
-	"taskId": "task-123",
-	"payload": {
-		"action": "updated",
-		"message": {
-			"type": "say",
-			"say": "text",
-			"text": "The Fibonacci function works by recursively calculating the sum of the two previous numbers in the sequence.",
-			"partial": false
-		}
-	}
-}
-```
-
-### Error Handling Examples
-
-#### Example: Invalid Task ID
-
-**Client sends:**
-
-```json
-{
-	"type": "command",
-	"commandName": "sendMessage",
-	"taskId": "non-existent-task",
-	"arguments": {
-		"message": "Hello"
-	},
-	"requestId": "req3"
-}
-```
-
-**Server responds:**
-
-```json
-{
-	"type": "response",
-	"status": "error",
-	"requestId": "req3",
-	"commandName": "sendMessage",
-	"error": {
-		"code": "TASK_NOT_FOUND",
-		"message": "Task with ID 'non-existent-task' not found"
-	}
-}
-```
-
-### Security Considerations
-
-The WebSocket server should implement:
-
-1. **Origin validation**: Validate the origin of WebSocket connection requests
-2. **API key authentication**: Consider implementing an API key system for production usage
-3. **Rate limiting**: Limit the number of commands per client to prevent abuse
-4. **Connection limits**: Limit the number of simultaneous connections
+- Invalid command format
+- Unknown command name
+- Missing required parameters
+- Task not found
+- Permission denied
+- Internal server errors
 
 ### Implementation Notes
 
-- The WebSocket server should use the `ws` npm package
-- Use proper error handling for all API calls
-- Implement logging for all WebSocket interactions
-- Consider implementing a connection heartbeat mechanism
-- All JSON responses should be properly serialized and validated
+- The API uses node-ipc for communication
+- Supports both Unix domain sockets and TCP connections
+- Implements proper error handling and validation using Zod schemas
+- Maintains client identification for proper message routing
+- Handles connection lifecycle (connect, disconnect, acknowledgment)

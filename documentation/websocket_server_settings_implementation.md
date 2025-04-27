@@ -1,46 +1,49 @@
-## Roo Code WebSocket Server Settings Implementation Guide
+## Roo Code IPC Server Settings Implementation Guide
 
-This guide explains how to implement settings for the WebSocket server in the Roo Code VSCode extension following the project's established patterns for settings implementation.
+This guide explains how to implement settings for the node-ipc based server in the Roo Code VSCode extension following the project's established patterns for settings implementation.
 
 ### Requirements Overview
 
-Based on `websocket_server_specs.md`, the WebSocket server requires the following settings:
+Based on the IPC server specifications, we need settings for:
 
-1. **Port Configuration**: Default: 7800
-2. **Server Enable/Disable**: Default: disabled (false)
-3. **Connection Status Indicator**
-4. **Enhanced Error Feedback**
-5. **Port Validation**
+1. **Connection Mode**: Unix domain sockets or TCP
+2. **TCP Settings**:
+    - Port Configuration
+    - Host Configuration
+3. **Unix Socket Settings**:
+    - Socket Path Configuration
+4. **Connection Status Indicator**
+5. **Enhanced Error Feedback**
 
 ### Implementation Steps (Based on Roo Code Patterns)
 
 #### 1. Add Settings to ExtensionMessage.ts
 
-Add the websocket settings to the `ExtensionState` interface in `src/shared/ExtensionMessage.ts`:
+Add the IPC settings to the `ExtensionState` interface in `src/shared/ExtensionMessage.ts`:
 
 ```typescript
 export interface ExtensionState {
 	// Existing properties...
 
-	websocketServerEnabled: boolean // Whether the WebSocket server is enabled
-	websocketServerPort: number // Port for the WebSocket server
+	ipcConnectionMode: "unix" | "tcp"
+	ipcTcpPort: number
+	ipcTcpHost: string
+	ipcUnixSocketPath: string | null
 }
 ```
 
 #### 2. Add Message Types to WebviewMessage.ts
 
-Add message types for the websocket settings to `src/shared/WebviewMessage.ts`:
+Add message types for the IPC settings to `src/shared/WebviewMessage.ts`:
 
 ```typescript
 export interface WebviewMessage {
-	type:
-		| "websocketServerEnabled" // Add this
-		| "websocketServerPort" // Add this
+	type: "ipcConnectionMode" | "ipcTcpPort" | "ipcTcpHost" | "ipcUnixSocketPath"
 	// Existing types...
 
 	// Existing properties...
-	value?: number // For port number
-	bool?: boolean // For enabled/disabled
+	value?: number | string // For port/host/path
+	mode?: "unix" | "tcp" // For connection mode
 }
 ```
 
@@ -51,7 +54,7 @@ Make changes to `src/core/webview/ClineProvider.ts`:
 a. Add the setting names to the `GlobalStateKey` type union:
 
 ```typescript
-type GlobalStateKey = "websocketServerEnabled" | "websocketServerPort"
+type GlobalStateKey = "ipcConnectionMode" | "ipcTcpPort" | "ipcTcpHost" | "ipcUnixSocketPath"
 // Other existing keys...
 ```
 
@@ -61,369 +64,201 @@ b. Add the settings to the `Promise.all` array in the `getState` method:
 async getState(): Promise<ExtensionState> {
   const [
     // Existing entries...
-    websocketServerEnabled,
-    websocketServerPort,
+    ipcConnectionMode,
+    ipcTcpPort,
+    ipcTcpHost,
+    ipcUnixSocketPath,
   ] = await Promise.all([
     // Existing promises...
-    this.globalState.get<boolean>("websocketServerEnabled", false),  // Default: disabled
-    this.globalState.get<number>("websocketServerPort", 7800),       // Default: 7800
+    this.globalState.get<"unix" | "tcp">("ipcConnectionMode", "unix"),
+    this.globalState.get<number>("ipcTcpPort", 7800),
+    this.globalState.get<string>("ipcTcpHost", "127.0.0.1"),
+    this.globalState.get<string | null>("ipcUnixSocketPath", null),
   ])
 
   return {
     // Existing properties...
-    websocketServerEnabled,
-    websocketServerPort,
+    ipcConnectionMode,
+    ipcTcpPort,
+    ipcTcpHost,
+    ipcUnixSocketPath,
   }
 }
 ```
 
-c. Add the settings to the destructured variables in `getStateToPostToWebview`:
+c. Add cases in `setWebviewMessageListener` to handle the setting's message types:
 
 ```typescript
-async getStateToPostToWebview(): Promise<Partial<ExtensionState>> {
-  const {
-    // Existing properties...
-    websocketServerEnabled,
-    websocketServerPort,
-  } = await this.getState()
-
-  return {
-    // Existing properties...
-    websocketServerEnabled,
-    websocketServerPort,
-  }
-}
-```
-
-d. Add cases in `setWebviewMessageListener` to handle the setting's message types:
-
-```typescript
-case "websocketServerEnabled":
-  await this.updateGlobalState("websocketServerEnabled", message.bool)
+case "ipcConnectionMode":
+  await this.updateGlobalState("ipcConnectionMode", message.mode)
   await this.postStateToWebview()
-
-  // Update WebSocket server state based on new setting
-  if (message.bool) {
-    this.startWebSocketServer()
-  } else {
-    this.stopWebSocketServer()
-  }
+  this.restartIpcServer()
   break
 
-case "websocketServerPort":
-  // Validate port number
+case "ipcTcpPort":
   const port = message.value as number
   if (port < 1024 || port > 65535) {
     this.view?.webview.postMessage({
       type: "action",
       action: "error",
-      text: "WebSocket port must be between 1024 and 65535"
+      text: "TCP port must be between 1024 and 65535"
     })
     return
   }
-
-  await this.updateGlobalState("websocketServerPort", port)
+  await this.updateGlobalState("ipcTcpPort", port)
   await this.postStateToWebview()
-
-  // Restart server if it's running
-  if (await this.globalState.get<boolean>("websocketServerEnabled", false)) {
-    this.restartWebSocketServer()
+  if (await this.globalState.get<"unix" | "tcp">("ipcConnectionMode") === "tcp") {
+    this.restartIpcServer()
   }
   break
+
+// Add similar cases for ipcTcpHost and ipcUnixSocketPath
 ```
 
 #### 4. Add UI Components to SettingsView.tsx
 
-Add UI components for the WebSocket settings in `webview-ui/src/components/SettingsView.tsx`:
-
-a. Update the `ExtensionStateContextType` interface:
+Add UI components for the IPC settings in `webview-ui/src/components/SettingsView.tsx`:
 
 ```typescript
-interface ExtensionStateContextType {
-	// Existing properties...
-	websocketServerEnabled: boolean
-	setWebsocketServerEnabled: (value: boolean) => void
-	websocketServerPort: number
-	setWebsocketServerPort: (value: number) => void
-}
-```
-
-b. Add the settings to the initial state in `useState`:
-
-```typescript
-const [websocketServerEnabled, setWebsocketServerEnabled] = useState<boolean>(
-	extensionState?.websocketServerEnabled ?? false,
-)
-
-const [websocketServerPort, setWebsocketServerPort] = useState<number>(extensionState?.websocketServerPort ?? 7800)
-```
-
-c. Add the settings to the `contextValue` object:
-
-```typescript
-const contextValue: ExtensionStateContextType = {
-	// Existing properties...
-	websocketServerEnabled,
-	setWebsocketServerEnabled,
-	websocketServerPort,
-	setWebsocketServerPort,
-}
-```
-
-d. Add UI components for the settings:
-
-```typescript
-// For the enabled/disabled setting
-<VSCodeCheckbox
-  checked={websocketServerEnabled}
-  onChange={(e: any) => setWebsocketServerEnabled(e.target.checked)}
->
-  <span style={{ fontWeight: "500" }}>Enable WebSocket Server</span>
-</VSCodeCheckbox>
-
-// For the port setting
+// Connection mode radio buttons
 <div>
-  <label htmlFor="websocketServerPort">WebSocket Server Port (1024-65535)</label>
-  <input
-    id="websocketServerPort"
-    type="number"
-    value={websocketServerPort}
-    min={1024}
-    max={65535}
-    onChange={(e) => {
-      const value = parseInt(e.target.value, 10)
-      if (!isNaN(value) && value >= 1024 && value <= 65535) {
-        setWebsocketServerPort(value)
-      }
-    }}
-    style={{
-      width: "100%",
-      padding: "4px 8px",
-      backgroundColor: "var(--vscode-input-background)",
-      color: "var(--vscode-input-foreground)",
-      border: "1px solid var(--vscode-input-border)",
-      borderRadius: "2px"
-    }}
-  />
+  <label>IPC Connection Mode</label>
+  <div style={{ display: "flex", gap: "1rem" }}>
+    <VSCodeRadio
+      checked={ipcConnectionMode === "unix"}
+      onChange={() => setIpcConnectionMode("unix")}
+    >
+      Unix Domain Socket
+    </VSCodeRadio>
+    <VSCodeRadio
+      checked={ipcConnectionMode === "tcp"}
+      onChange={() => setIpcConnectionMode("tcp")}
+    >
+      TCP
+    </VSCodeRadio>
+  </div>
 </div>
+
+{/* TCP Settings */}
+{ipcConnectionMode === "tcp" && (
+  <>
+    <div>
+      <label>TCP Port (1024-65535)</label>
+      <input
+        type="number"
+        value={ipcTcpPort}
+        min={1024}
+        max={65535}
+        onChange={(e) => {
+          const value = parseInt(e.target.value, 10)
+          if (!isNaN(value) && value >= 1024 && value <= 65535) {
+            setIpcTcpPort(value)
+          }
+        }}
+      />
+    </div>
+    <div>
+      <label>TCP Host</label>
+      <input
+        type="text"
+        value={ipcTcpHost}
+        onChange={(e) => setIpcTcpHost(e.target.value)}
+      />
+    </div>
+  </>
+)}
+
+{/* Unix Socket Path */}
+{ipcConnectionMode === "unix" && (
+  <div>
+    <label>Unix Socket Path (optional)</label>
+    <input
+      type="text"
+      value={ipcUnixSocketPath || ""}
+      onChange={(e) => setIpcUnixSocketPath(e.target.value)}
+      placeholder="System temp directory"
+    />
+  </div>
+)}
 ```
 
-e. Add the settings to `handleSubmit`:
+#### 5. Create IPC Server Manager Class
+
+Create an IPC server manager class in `evals/packages/ipc/src/server.ts` that follows the singleton pattern:
 
 ```typescript
-const handleSubmit = () => {
-	// Existing message posts...
-
-	vscode.postMessage({ type: "websocketServerEnabled", bool: websocketServerEnabled })
-	vscode.postMessage({ type: "websocketServerPort", value: websocketServerPort })
-}
-```
-
-#### 5. Add Test Coverage
-
-Update `src/core/webview/__tests__/ClineProvider.test.ts` to include tests for the new settings:
-
-a. Add the settings to `mockState`:
-
-```typescript
-const mockState: ExtensionState = {
-	// Existing properties...
-	websocketServerEnabled: false,
-	websocketServerPort: 7800,
-}
-```
-
-b. Add test cases for the settings:
-
-```typescript
-describe("websocket server settings", () => {
-	it("should handle websocketServerEnabled updates", async () => {
-		// Setup
-		const provider = await setupProvider()
-
-		// Test
-		await provider.handleWebviewMessage({ type: "websocketServerEnabled", bool: true })
-
-		// Verify
-		expect(mockContext.globalState.update).toHaveBeenCalledWith("websocketServerEnabled", true)
-		expect(mockWebview.postMessage).toHaveBeenCalled()
-	})
-
-	it("should handle websocketServerPort updates with valid port", async () => {
-		// Setup
-		const provider = await setupProvider()
-
-		// Test
-		await provider.handleWebviewMessage({ type: "websocketServerPort", value: 8080 })
-
-		// Verify
-		expect(mockContext.globalState.update).toHaveBeenCalledWith("websocketServerPort", 8080)
-		expect(mockWebview.postMessage).toHaveBeenCalled()
-	})
-
-	it("should reject invalid websocketServerPort values", async () => {
-		// Setup
-		const provider = await setupProvider()
-
-		// Test
-		await provider.handleWebviewMessage({ type: "websocketServerPort", value: 80 }) // Invalid port (< 1024)
-
-		// Verify
-		expect(mockContext.globalState.update).not.toHaveBeenCalled()
-		expect(mockWebview.postMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "action",
-				action: "error",
-			}),
-		)
-	})
-})
-```
-
-#### 6. Create WebSocket Server Manager Class
-
-Create a WebSocket server manager class in `src/server/WebSocketServerManager.ts` that follows the singleton pattern and interacts with the extension's settings:
-
-```typescript
-import * as WebSocket from "ws"
-import * as vscode from "vscode"
-import { API } from "../exports/api"
-import { ClineProvider } from "../core/webview/ClineProvider"
-
-export class WebSocketServerManager {
-	private static instance: WebSocketServerManager
-	private server: WebSocket.Server | undefined
-	private currentPort: number = 7800
+export class IpcServerManager {
+	private static instance: IpcServerManager
+	private ipc: any // node-ipc instance
 	private outputChannel: vscode.OutputChannel
 	private statusBarItem: vscode.StatusBarItem | undefined
-	private api: API
-	private provider: ClineProvider
 
-	private constructor(
-		context: vscode.ExtensionContext,
-		outputChannel: vscode.OutputChannel,
-		api: API,
-		provider: ClineProvider,
-	) {
-		this.outputChannel = outputChannel
-		this.api = api
-		this.provider = provider
-
-		// Create status bar item
-		this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right)
-		this.statusBarItem.command = "roo-cline.toggleWebSocketServer"
-		context.subscriptions.push(this.statusBarItem)
-
-		// Initialize from settings
-		this.initialize()
-
-		// Register commands
-		context.subscriptions.push(
-			vscode.commands.registerCommand("roo-cline.toggleWebSocketServer", this.toggleServer.bind(this)),
-		)
-
-		// Listen for provider state changes
-		provider.on("stateUpdated", async () => {
-			const state = await provider.getState()
-			this.updateFromSettings(state.websocketServerEnabled, state.websocketServerPort)
-		})
-
-		// Register extension deactivation handler
-		context.subscriptions.push({
-			dispose: () => this.stopServer(),
-		})
-	}
-
-	public static getInstance(
-		context: vscode.ExtensionContext,
-		outputChannel: vscode.OutputChannel,
-		api: API,
-		provider: ClineProvider,
-	): WebSocketServerManager {
-		if (!WebSocketServerManager.instance) {
-			WebSocketServerManager.instance = new WebSocketServerManager(context, outputChannel, api, provider)
-		}
-		return WebSocketServerManager.instance
-	}
-
-	private async initialize(): Promise<void> {
-		const state = await this.provider.getState()
-		this.updateFromSettings(state.websocketServerEnabled, state.websocketServerPort)
-	}
-
-	private async updateFromSettings(enabled: boolean, port: number): Promise<void> {
-		if (enabled) {
-			if (this.server) {
-				// Check if port changed
-				if (this.currentPort !== port) {
-					this.stopServer()
-					this.startServer(port)
-				}
-			} else {
-				// Server was off, now turn it on
-				this.startServer(port)
-			}
-		} else if (this.server) {
-			// Server was on, now turn it off
-			this.stopServer()
-		}
-
-		// Update status UI
-		this.updateStatusIndicator(enabled)
-	}
-
-	// Rest of implementation...
+	// Implementation details in the IPC package...
 }
 ```
 
-#### 7. Connection Status Indicator
+#### 6. Connection Status Display
 
-Implement the status bar item to show connection status:
+Implement a connection status indicator:
 
 ```typescript
-private updateStatusIndicator(isEnabled: boolean): void {
+private updateStatusIndicator(): void {
   if (!this.statusBarItem) {
-    return;
+    return
   }
 
-  if (isEnabled && this.server) {
-    this.statusBarItem.text = `$(radio-tower) WS:${this.currentPort}`;
-    this.statusBarItem.tooltip = `Roo Code WebSocket Server running on port ${this.currentPort}`;
-    this.statusBarItem.show();
-  } else if (isEnabled) {
-    this.statusBarItem.text = `$(warning) WS:${this.currentPort}`;
-    this.statusBarItem.tooltip = `Roo Code WebSocket Server failed to start on port ${this.currentPort}`;
-    this.statusBarItem.show();
+  const config = vscode.workspace.getConfiguration("roo-code.ipc")
+  const mode = config.get<"unix" | "tcp">("connectionMode", "unix")
+
+  if (this.ipc.server) {
+    if (mode === "tcp") {
+      const port = config.get<number>("tcp.port", 7800)
+      const host = config.get<string>("tcp.host", "127.0.0.1")
+      this.statusBarItem.text = `$(radio-tower) IPC:${host}:${port}`
+      this.statusBarItem.tooltip = `Roo Code IPC Server (TCP) running on ${host}:${port}`
+    } else {
+      const socketPath = config.get<string>("unix.socketPath") || "default"
+      this.statusBarItem.text = `$(plug) IPC:Unix`
+      this.statusBarItem.tooltip = `Roo Code IPC Server (Unix) running at ${socketPath}`
+    }
   } else {
-    this.statusBarItem.text = `$(circle-slash) WS:Off`;
-    this.statusBarItem.tooltip = `Roo Code WebSocket Server is disabled`;
-    this.statusBarItem.show();
+    this.statusBarItem.text = `$(circle-slash) IPC:Off`
+    this.statusBarItem.tooltip = `Roo Code IPC Server is not running`
   }
+
+  this.statusBarItem.show()
 }
 ```
 
 ### Integration with Extension.ts
 
-Finally, initialize the WebSocket server manager in `src/extension.ts`:
+Initialize the IPC server manager in `src/extension.ts`:
 
 ```typescript
 // In the activate function
-const outputChannel = vscode.window.createOutputChannel("Roo-Code WebSocket")
+const outputChannel = vscode.window.createOutputChannel("Roo-Code IPC")
 context.subscriptions.push(outputChannel)
 
-// Initialize WebSocketServerManager after the ClineProvider is created
-const api = new API(clineOutputChannel, provider)
-const webSocketManager = WebSocketServerManager.getInstance(context, outputChannel, api, provider)
+// Initialize IpcServerManager after the ClineProvider is created
+const ipcManager = IpcServerManager.getInstance(context, outputChannel)
 ```
 
-### Conclusion
+### Testing
 
-By following these steps, the WebSocket server settings will be properly integrated into the Roo Code extension, following the project's established patterns for settings implementation:
+Add test coverage for:
 
-1. The settings will persist between VS Code sessions
-2. The UI will allow users to enable/disable the server and set the port
-3. The settings will be properly validated
-4. The server status will be visible in the VS Code status bar
-5. The WebSocket server will be properly managed based on the settings
+1. Settings persistence and validation
+2. Connection mode switching
+3. TCP and Unix socket configuration
+4. Error handling and recovery
+5. Status indicator updates
 
-This implementation ensures that the WebSocket server follows the same patterns as other features in the Roo Code extension, making it consistent with the rest of the codebase.
+### Common Pitfalls
+
+1. **Platform Differences**: Handle Unix socket paths appropriately on different platforms
+2. **Socket File Cleanup**: Ensure proper cleanup of socket files on server shutdown
+3. **Permission Issues**: Handle file permission errors for Unix domain sockets
+4. **Connection Mode Switching**: Properly handle switching between TCP and Unix socket modes
+5. **Settings Updates**: Handle asynchronous settings updates correctly
+
+This implementation ensures that the IPC server follows the same patterns as other features in the Roo Code extension while providing the necessary flexibility for both Unix domain socket and TCP connections.

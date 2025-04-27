@@ -26,7 +26,11 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	constructor(
 		outputChannel: vscode.OutputChannel,
 		provider: ClineProvider,
-		socketPath?: string,
+		ipcConfig?: {
+			socketPath?: string
+			tcpHost?: string
+			tcpPort?: number | string
+		},
 		enableLogging = false,
 	) {
 		super()
@@ -48,11 +52,18 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 
 		this.registerListeners(this.sidebarProvider)
 
-		if (socketPath) {
-			const ipc = (this.ipc = new IpcServer(socketPath, this.log))
+		if (ipcConfig) {
+			const ipcOptions = ipcConfig.tcpPort
+				? { host: ipcConfig.tcpHost, port: ipcConfig.tcpPort }
+				: { socketPath: ipcConfig.socketPath }
+
+			const ipc = (this.ipc = new IpcServer(ipcOptions, this.log))
 
 			ipc.listen()
-			this.log(`[API] ipc server started: socketPath=${socketPath}, pid=${process.pid}, ppid=${process.ppid}`)
+			const connectionInfo = ipcConfig.tcpPort
+				? `host=${ipcConfig.tcpHost}, port=${ipcConfig.tcpPort}`
+				: `socketPath=${ipcConfig.socketPath}`
+			this.log(`[API] ipc server started: ${connectionInfo}, pid=${process.pid}, ppid=${process.ppid}`)
 
 			// Removed async keyword for debugging 'never' type error
 			ipc.on(IpcMessageType.TaskCommand as any, (clientId: string, data: TaskCommand) => {

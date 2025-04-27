@@ -1,6 +1,6 @@
 ## RooCode API Documentation
 
-Roo Code is a VS Code extension that provides AI-assisted coding features, allowing developers to interact with a language model directly within their IDE. The Roo Code API enables external applications, such as custom websocket servers, to communicate with the extension and leverage its capabilities.
+Roo Code is a VS Code extension that provides AI-assisted coding features, allowing developers to interact with a language model directly within their IDE. The Roo Code API enables external applications to communicate with the extension through node-ipc, leveraging its capabilities for both Unix domain sockets and TCP connections.
 
 To get the `RooCodeAPI` instance, you can use the following code after the Roo extension has been activated and is ready:
 
@@ -733,7 +733,17 @@ The `log(message: string): void` method provides a way to send messages to the R
 
 ### IPC Server Integration
 
-The `RooCodeAPI` class integrates with an Inter-Process Communication (IPC) server. This server facilitates communication between the main VS Code extension process and other processes, such as the webview or external applications connecting via the API. The API methods and event emissions are often mediated through this IPC layer, ensuring reliable communication across different parts of the Roo Code architecture. Details about the IPC server implementation can be found in the codebase (e.g., in files related to IPC communication).
+The `RooCodeAPI` class integrates with a node-ipc based Inter-Process Communication (IPC) server. This server facilitates communication between the main VS Code extension process and other processes, such as the webview or external applications connecting via the API. The IPC server supports both Unix domain sockets and TCP connections, providing flexibility in how external applications can connect.
+
+Key features of the IPC integration:
+
+- **Connection Types:** Supports both Unix domain sockets (for local processes) and TCP connections (for remote processes)
+- **Message Types:** Uses structured message types (TaskCommand, TaskEvent, Ack) for reliable communication
+- **Client Identification:** Maintains unique client IDs for proper message routing
+- **Connection Lifecycle:** Handles connect, disconnect, and acknowledgment messages
+- **Error Handling:** Provides robust error handling and reporting through the message event system
+
+The IPC server implementation uses the `node-ipc` package, which provides a reliable and efficient communication layer. The API methods and event emissions are mediated through this IPC layer, ensuring consistent communication across different parts of the Roo Code architecture.
 
 ---
 

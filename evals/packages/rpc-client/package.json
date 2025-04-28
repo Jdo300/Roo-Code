@@ -10,7 +10,7 @@
 		"test": "jest"
 	},
 	"dependencies": {
-		"@roo-code/types": "workspace:*",
+		"@evals/types": "workspace:*",
 		"events": "^3.3.0",
 		"node-ipc": "^11.1.0",
 		"zod": "^3.22.4"

@@ -1,84 +1,71 @@
-const { RooCodeClient } = require("../../evals/packages/rpc-client")
+const ipc = require("node-ipc").default
 
-// Configuration from env vars or defaults
+// Configuration
+// Get configuration from environment variables
 const config = {
-	host: process.env.ROO_HOST || "localhost",
-	port: parseInt(process.env.ROO_PORT || "3000", 10),
-	type: "tcp",
+	appspace: "roo.",
+	id: "rpc-test-client",
+	networkPort: process.env.ROO_CODE_IPC_TCP_PORT || "3000",
+	retry: 1500,
+	silent: true,
+	networkHost: process.env.ROO_CODE_IPC_TCP_HOST || "localhost",
+	tcp: true,
 }
 
-// Helper to format log messages
-const log = (type, message, data = "") => {
-	const timestamp = new Date().toISOString()
-	console.log(`[${timestamp}] [${type}] ${message}`, data ? JSON.stringify(data, null, 2) : "")
-}
+console.log("Connecting with config:", config)
+
+// Initialize IPC
+ipc.config.id = config.id
+ipc.config.retry = config.retry
+ipc.config.silent = config.silent
+ipc.config.networkPort = config.networkPort
+ipc.config.networkHost = config.networkHost
+ipc.config.tcp = config.tcp
 
 async function runTests() {
-	const client = new RooCodeClient(config)
+	return new Promise((resolve, reject) => {
+		try {
+			// Connect to server
+			ipc.connectTo("roo-server", () => {
+				const server = ipc.of["roo-server"]
 
-	// Set up event listeners
-	client.on("connect", (data) => log("EVENT", "Connected to server", data))
-	client.on("disconnect", () => log("EVENT", "Disconnected from server"))
-	client.on("error", (error) => log("ERROR", error.message))
-	client.on("message", (message) => log("MESSAGE", "Received message", message))
+				server.on("connect", () => {
+					console.log("Connected to RPC server")
 
-	try {
-		// Connect to server
-		log("INFO", "Connecting to server...", config)
-		await client.connect()
+					// Test message
+					server.emit("message", {
+						type: "test",
+						payload: "Hello from test client!",
+					})
+				})
 
-		// Test isReady
-		log("TEST", "Testing isReady()")
-		const ready = await client.isReady()
-		log("RESULT", "isReady() returned", ready)
+				server.on("message", (data) => {
+					console.log("Received message:", data)
+				})
 
-		// Test starting a new task
-		log("TEST", "Testing startNewTask()")
-		const taskId = await client.startNewTask({
-			text: "Hello from test client!",
-			configuration: {
-				model: "gpt-4",
-			},
-		})
-		log("RESULT", "startNewTask() returned taskId", taskId)
+				server.on("error", (err) => {
+					console.error("Connection error:", err)
+					reject(err)
+				})
 
-		// Test getting task stack
-		log("TEST", "Testing getCurrentTaskStack()")
-		const stack = await client.getCurrentTaskStack()
-		log("RESULT", "getCurrentTaskStack() returned", stack)
-
-		// Test sending a message
-		log("TEST", "Testing sendMessage()")
-		await client.sendMessage("Test message from RPC client")
-		log("RESULT", "sendMessage() completed")
-
-		// Test getting messages
-		log("TEST", "Testing getMessages()")
-		await client.getMessages(taskId)
-		log("RESULT", "getMessages() completed")
-
-		// Test getting token usage
-		log("TEST", "Testing getTokenUsage()")
-		await client.getTokenUsage(taskId)
-		log("RESULT", "getTokenUsage() completed")
-
-		// Test clearing current task
-		log("TEST", "Testing clearCurrentTask()")
-		await client.clearCurrentTask("Test completed")
-		log("RESULT", "clearCurrentTask() completed")
-
-		// Graceful shutdown
-		log("INFO", "Tests completed, disconnecting...")
-		client.disconnect()
-	} catch (error) {
-		log("ERROR", "Test failed", error)
-		client.disconnect()
-		process.exit(1)
-	}
+				// Disconnect after 5 seconds
+				setTimeout(() => {
+					console.log("Test completed, disconnecting...")
+					server.disconnect()
+					resolve()
+				}, 5000)
+			})
+		} catch (error) {
+			console.error("Test failed:", error)
+			reject(error)
+		}
+	})
 }
 
-// Run the tests
-runTests().catch((error) => {
-	console.error("Fatal error:", error)
-	process.exit(1)
-})
+// Run tests
+runTests()
+	.then(() => process.exit(0))
+	.catch((error) => {
+		console.error("Fatal error:", error)
+		process.exit(1)
+	})

@@ -120,7 +120,7 @@ export class VertexHandler extends BaseProvider implements SingleCompletionHandl
 				googleAuth: new GoogleAuth({
 					scopes: ["https://www.googleapis.com/auth/cloud-platform"],
 					credentials: JSON.parse(this.options.vertexJsonCredentials),
-				}),
+				}) as any,
 			})
 		} else if (this.options.vertexKeyFile) {
 			this.anthropicClient = new AnthropicVertex({
@@ -130,7 +130,7 @@ export class VertexHandler extends BaseProvider implements SingleCompletionHandl
 				googleAuth: new GoogleAuth({
 					scopes: ["https://www.googleapis.com/auth/cloud-platform"],
 					keyFile: this.options.vertexKeyFile,
-				}),
+				}) as any,
 			})
 		} else {
 			this.anthropicClient = new AnthropicVertex({

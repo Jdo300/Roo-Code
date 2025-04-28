@@ -194,8 +194,8 @@ const ApiOptions = ({
 
 	const selectedProviderModelOptions = useMemo(
 		() =>
-			MODELS_BY_PROVIDER[selectedProvider]
-				? Object.keys(MODELS_BY_PROVIDER[selectedProvider]).map((modelId) => ({
+			(MODELS_BY_PROVIDER[selectedProvider] ?? {})
+				? Object.keys(MODELS_BY_PROVIDER[selectedProvider] ?? {}).map((modelId) => ({
 						value: modelId,
 						label: modelId,
 					}))

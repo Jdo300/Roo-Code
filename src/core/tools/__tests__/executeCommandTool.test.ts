@@ -103,8 +103,10 @@ describe("executeCommandTool", () => {
 		mockAskApproval = jest.fn().mockResolvedValue(true)
 		// @ts-expect-error - Jest mock function type issues
 		mockHandleError = jest.fn().mockResolvedValue(undefined)
-		mockPushToolResult = jest.fn()
-		mockRemoveClosingTag = jest.fn().mockReturnValue("command")
+		// @ts-expect-error - Jest mock function type issues
+		mockPushToolResult = jest.fn().mockImplementation(() => {})
+		// @ts-expect-error - Jest mock function type issues
+		mockRemoveClosingTag = jest.fn().mockImplementation((_tag, text) => text || "")
 
 		// Create a mock tool use object
 		mockToolUse = {
@@ -218,7 +220,6 @@ describe("executeCommandTool", () => {
 		it("should handle command rejection", async () => {
 			// Setup
 			mockToolUse.params.command = "echo test"
-			// @ts-expect-error - Jest mock function type issues
 			mockAskApproval.mockResolvedValue(false)
 
 			// Execute

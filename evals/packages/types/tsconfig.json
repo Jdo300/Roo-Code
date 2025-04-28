@@ -12,9 +12,6 @@
 		"composite": true,
 		"declarationMap": true,
 		"sourceMap": true,
-		"rootDir": "./src",
 		"preserveSymlinks": true
-	},
-	"include": ["src"],
-	"exclude": ["node_modules"]
+	}
 }

@@ -20,9 +20,7 @@
 		"useDefineForClassFields": true,
 		"useUnknownInCatchVariables": false,
 		"baseUrl": ".",
-		"paths": {
-			"@evals/types": ["./evals/packages/types/src/index.ts"]
-		}
+		"paths": {}
 	},
 	"include": ["src/**/*", "scripts/**/*", ".changeset/**/*"],
 	"exclude": ["node_modules", ".vscode-test", "webview-ui"]

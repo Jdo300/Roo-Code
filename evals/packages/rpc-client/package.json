@@ -1,0 +1,26 @@
+{
+	"name": "@roo-code/rpc-client",
+	"version": "0.1.0",
+	"description": "RPC client library for Roo Code",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "module",
+	"scripts": {
+		"build": "tsc",
+		"test": "jest"
+	},
+	"dependencies": {
+		"@roo-code/types": "workspace:*",
+		"events": "^3.3.0",
+		"node-ipc": "^11.1.0",
+		"zod": "^3.22.4"
+	},
+	"devDependencies": {
+		"@types/node": "^20.11.0",
+		"@types/node-ipc": "^9.2.3",
+		"@types/jest": "^29.5.11",
+		"typescript": "^5.3.3",
+		"jest": "^29.7.0",
+		"ts-jest": "^29.1.1"
+	}
+}

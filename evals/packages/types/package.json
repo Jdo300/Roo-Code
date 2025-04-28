@@ -2,7 +2,14 @@
 	"name": "@evals/types",
 	"private": true,
 	"type": "module",
-	"exports": "./src/index.ts",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
 	"scripts": {
 		"lint": "eslint src/**/*.ts --max-warnings=0",
 		"check-types": "tsc --noEmit",

@@ -673,4 +673,3 @@ export const rooCodeEventsSchema = z.object({
 	[RooCodeEventName.TaskTokenUsageUpdated]: z.tuple([z.string(), tokenUsageSchema]),
 	[RooCodeEventName.TaskToolFailed]: z.tuple([z.string(), toolNamesSchema, z.string()]),
 })
-//# sourceMappingURL=roo-code.js.map

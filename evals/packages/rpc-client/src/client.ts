@@ -1,17 +1,9 @@
 import { EventEmitter } from "events"
 import { randomUUID } from "crypto"
 
-import type {
-	RooCodeClientOptions,
-	PendingRequest,
-	RooCodeSettings,
-	IpcMessage,
-	TaskCommand,
-	TaskEvent,
-	RooCodeEvents,
-} from "./types.js"
+import type { PendingRequest, RooCodeSettings, IpcMessage, TaskCommand, TaskEvent } from "./types.js"
 
-import { IpcMessageType, IpcOrigin, TaskCommandName } from "../../types/src/ipc.js"
+import { IpcMessageType, IpcOrigin, TaskCommandName } from "@evals/types"
 import { TcpTransport, RpcTransport, Transport } from "./transport.js"
 
 export interface RooCodeClientConfig {

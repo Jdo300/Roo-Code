@@ -1,5 +1,5 @@
-import type { RooCodeSettings, ClineMessage, TokenUsage, RooCodeEvents } from "../../types/src/roo-code.js"
-import type { IpcMessage, TaskCommand, TaskEvent } from "../../types/src/ipc.js"
+import type { RooCodeSettings, ClineMessage, TokenUsage, RooCodeEvents } from "@evals/types"
+import type { IpcMessage, TaskCommand, TaskEvent } from "@evals/types"
 
 export interface RooCodeClientOptions {
 	host: string

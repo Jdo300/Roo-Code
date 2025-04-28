@@ -1,0 +1,13 @@
+{
+	"name": "rpc-tcp-test",
+	"version": "1.0.0",
+	"description": "Test client for Roo Code RPC TCP interface",
+	"main": "test-client.js",
+	"scripts": {
+		"test": "node test-client.js"
+	},
+	"dependencies": {
+		"@rooveterinaryinc/rpc-client": "workspace:*"
+	},
+	"private": true
+}

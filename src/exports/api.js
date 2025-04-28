@@ -17,7 +17,7 @@ export class API extends EventEmitter {
 	taskMap = new Map()
 	log
 	logfile
-	constructor(outputChannel, provider, socketPath, enableLogging = false) {
+	constructor(outputChannel, provider, ipcConfig, enableLogging = false) {
 		super()
 		this.outputChannel = outputChannel
 		this.sidebarProvider = provider
@@ -32,10 +32,16 @@ export class API extends EventEmitter {
 			this.log = () => {}
 		}
 		this.registerListeners(this.sidebarProvider)
-		if (socketPath) {
-			const ipc = (this.ipc = new IpcServer(socketPath, this.log))
+		if (ipcConfig) {
+			const ipcOptions = ipcConfig.port
+				? { host: ipcConfig.host, port: ipcConfig.port }
+				: { socketPath: ipcConfig.socketPath }
+			const ipc = (this.ipc = new IpcServer(ipcOptions, this.log))
 			ipc.listen()
-			this.log(`[API] ipc server started: socketPath=${socketPath}, pid=${process.pid}, ppid=${process.ppid}`)
+			const connectionInfo = ipcConfig.port
+				? `host=${ipcConfig.host}, port=${ipcConfig.port}`
+				: `socketPath=${ipcConfig.socketPath}`
+			this.log(`[API] ipc server started: ${connectionInfo}, pid=${process.pid}, ppid=${process.ppid}`)
 			// Removed async keyword for debugging 'never' type error
 			ipc.on(IpcMessageType.TaskCommand, (clientId, data) => {
 				switch (data.commandName) {

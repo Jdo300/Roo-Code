@@ -99,8 +99,18 @@ export async function activate(context) {
 	vscode.commands.executeCommand("roo-cline.activationCompleted")
 	// Implements the `RooCodeAPI` interface.
 	const socketPath = process.env.ROO_CODE_IPC_SOCKET_PATH
-	const enableLogging = typeof socketPath === "string"
-	return new API(outputChannel, provider, socketPath, enableLogging)
+	const tcpHost = process.env.ROO_CODE_IPC_TCP_HOST
+	const tcpPort = process.env.ROO_CODE_IPC_TCP_PORT
+	let ipcConfig
+	if (tcpPort) {
+		// Prioritize TCP if port is specified
+		ipcConfig = { tcpHost: tcpHost || "localhost", tcpPort }
+	} else if (socketPath) {
+		// Fall back to socket path if TCP not configured
+		ipcConfig = { socketPath }
+	}
+	const enableLogging = ipcConfig !== undefined
+	return new API(outputChannel, provider, ipcConfig, enableLogging)
 }
 // This method is called when your extension is deactivated
 export async function deactivate() {

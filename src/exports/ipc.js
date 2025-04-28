@@ -4,23 +4,39 @@ import ipc from "node-ipc"
 import { IpcOrigin, IpcMessageType, ipcMessageSchema } from "../schemas/ipc"
 export class IpcServer extends EventEmitter {
 	_socketPath
+	_host
+	_port
 	_log
 	_clients
 	_isListening = false
-	constructor(socketPath, log = console.log) {
+	constructor(options, log = console.log) {
 		super()
-		this._socketPath = socketPath
+		this._socketPath = options.socketPath
+		this._host = options.host
+		this._port = options.port
 		this._log = log
 		this._clients = new Map()
+		if (!this._socketPath && (!this._host || !this._port)) {
+			throw new Error("Either socketPath or both host and port must be provided")
+		}
 	}
 	listen() {
 		this._isListening = true
 		ipc.config.silent = true
-		ipc.serve(this.socketPath, () => {
+		const serverCallback = () => {
 			ipc.server.on("connect", (socket) => this.onConnect(socket))
 			ipc.server.on("socket.disconnected", (socket) => this.onDisconnect(socket))
 			ipc.server.on("message", (data) => this.onMessage(data))
-		})
+		}
+		if (this._socketPath) {
+			ipc.serve(this._socketPath, serverCallback)
+		} else if (this._host && this._port) {
+			ipc.serveNet(
+				this._host,
+				typeof this._port === "string" ? parseInt(this._port, 10) : this._port,
+				serverCallback,
+			)
+		}
 		ipc.server.start()
 	}
 	onConnect(socket) {

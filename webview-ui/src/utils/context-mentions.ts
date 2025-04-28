@@ -1,7 +1,11 @@
 import { mentionRegex } from "@roo/shared/context-mentions"
 import { Fzf } from "fzf"
 import { ModeConfig } from "@roo/shared/modes"
-import * as path from "path"
+
+// Browser-compatible path utilities
+function basename(path: string): string {
+	return path.split("/").pop() || path
+}
 
 export interface SearchResult {
 	path: string
@@ -241,7 +245,7 @@ export function getContextMenuOptions(
 		return {
 			type: result.type === "folder" ? ContextMenuOptionType.Folder : ContextMenuOptionType.File,
 			value: formattedPath,
-			label: result.label || path.basename(result.path),
+			label: result.label || basename(result.path),
 			description: formattedPath,
 		}
 	})

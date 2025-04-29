@@ -89,7 +89,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.SetConfiguration),
-		data: z.any(), // Using z.any() for Partial<ConfigurationValues> as the exact schema isn't in roo-code.d.ts
+		data: rooCodeSettingsSchema.partial(),
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.IsReady),

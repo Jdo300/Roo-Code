@@ -400,65 +400,42 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	}
 
 	private registerListeners(provider: ClineProvider): void {
-		provider.on("clineCreated", (cline: any) => {
-			// Explicitly type cline as any for now
-			cline.on("taskStarted", async () => {
+		provider.on("clineCreated", (cline) => {
+			;(cline.on as any)("taskStarted", async () => {
 				this.emit(RooCodeEventName.TaskStarted, cline.taskId)
 				this.taskMap.set(cline.taskId, provider)
 				await this.fileLog(`[${new Date().toISOString()}] taskStarted -> ${cline.taskId}\n`)
-			})
-
-			cline.on("message", async (message: any) => {
-				// Explicitly type message as any for now
-				this.emit(RooCodeEventName.Message, { taskId: cline.taskId, ...message })
-
-				if (message.message.partial !== true) {
+			})(cline.on as any)("message", async (message: { message: any; action?: string }) => {
+				this.emit(RooCodeEventName.Message, {
+					taskId: cline.taskId,
+					message: message.message,
+					action: message.action === "updated" ? "updated" : "created",
+				})
+				if (message.message && message.message.partial !== true) {
 					await this.fileLog(`[${new Date().toISOString()}] ${JSON.stringify(message.message, null, 2)}\n`)
 				}
-			})
-
-			cline.on("taskModeSwitched", (taskId: string, mode: string) =>
+			})(cline.on as any)("taskModeSwitched", (taskId: string, mode: string) =>
 				this.emit(RooCodeEventName.TaskModeSwitched, taskId, mode),
-			)
-
-			cline.on("taskAskResponded", () => this.emit(RooCodeEventName.TaskAskResponded, cline.taskId))
-
-			cline.on("taskAborted", () => {
+			)(cline.on as any)("taskAskResponded", () => this.emit(RooCodeEventName.TaskAskResponded, cline.taskId))(
+				cline.on as any,
+			)("taskAborted", () => {
 				this.emit(RooCodeEventName.TaskAborted, cline.taskId)
 				this.taskMap.delete(cline.taskId)
-			})
-
-			cline.on("taskCompleted", async (_: any, tokenUsage: any, toolUsage: any) => {
-				// Explicitly type parameters as any for now
+			})(cline.on as any)("taskCompleted", async (_: any, tokenUsage: any, toolUsage: any) => {
 				this.emit(RooCodeEventName.TaskCompleted, cline.taskId, tokenUsage, toolUsage)
 				this.taskMap.delete(cline.taskId)
-
 				await this.fileLog(
 					`[${new Date().toISOString()}] taskCompleted -> ${cline.taskId} | ${JSON.stringify(tokenUsage, null, 2)} | ${JSON.stringify(toolUsage, null, 2)}\n`,
 				)
-			})
-
-			cline.on("taskSpawned", (childTaskId: string) =>
+			})(cline.on as any)("taskSpawned", (childTaskId: string) =>
 				this.emit(RooCodeEventName.TaskSpawned, cline.taskId, childTaskId),
-			)
-			cline.on("taskPaused", () => this.emit(RooCodeEventName.TaskPaused, cline.taskId))
-			cline.on("taskUnpaused", () => this.emit(RooCodeEventName.TaskUnpaused, cline.taskId))
-
-			cline.on(
+			)(cline.on as any)("taskPaused", () => this.emit(RooCodeEventName.TaskPaused, cline.taskId))(
+				cline.on as any,
+			)("taskUnpaused", () => this.emit(RooCodeEventName.TaskUnpaused, cline.taskId))(cline.on as any)(
 				"taskTokenUsageUpdated",
-				(
-					_: any,
-					usage: any, // Explicitly type parameters as any for now
-				) => this.emit(RooCodeEventName.TaskTokenUsageUpdated, cline.taskId, usage),
-			)
-
-			cline.on(
-				"taskToolFailed",
-				(
-					taskId: string,
-					tool: any,
-					error: any, // Explicitly type parameters as any for now
-				) => this.emit(RooCodeEventName.TaskToolFailed, taskId, tool, error),
+				(_: any, usage: any) => this.emit(RooCodeEventName.TaskTokenUsageUpdated, cline.taskId, usage),
+			)(cline.on as any)("taskToolFailed", (taskId: string, tool: any, error: any) =>
+				this.emit(RooCodeEventName.TaskToolFailed, taskId, tool, error),
 			)
 
 			this.emit(RooCodeEventName.TaskCreated, cline.taskId)
@@ -484,12 +461,11 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	public getMessages(taskId: string): void {
 		const provider = this.taskMap.get(taskId)
 		if (provider) {
-			// Emit messages through IPC if available
 			const messages = provider.messages || []
-			if (messages.length > 0) {
+			for (const message of messages) {
 				this.emit(RooCodeEventName.Message, {
 					taskId,
-					message: messages[0],
+					message,
 					action: "created",
 				})
 			}

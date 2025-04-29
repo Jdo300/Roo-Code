@@ -13,7 +13,7 @@ T = TypeVar('T')
 
 class RooCodeClient:
     def __init__(self, config: ConnectionConfig):
-        self.client_id = config.client_config.client_id
+        self.clientId = config.client_config.client_id
         self.transport: Transport
         
         if config.type == "tcp":
@@ -116,28 +116,31 @@ class RooCodeClient:
         message = IpcMessage(
             type=IpcMessageType.TASK_COMMAND,
             origin=IpcOrigin.CLIENT,
-            client_id=self.client_id,
+            clientId=self.clientId,
             data=command
         )
 
         future = asyncio.get_running_loop().create_future()
         timeout_handle = asyncio.get_running_loop().call_later(
             self.request_timeout,
-            lambda: self._handle_timeout(self.client_id)
+            lambda: self._handle_timeout(self.clientId)
         )
 
-        self.pending_requests[self.client_id] = PendingRequest(
+        self.pending_requests[self.clientId] = PendingRequest(
             future=future,
             timeout_handle=timeout_handle
         )
 
         try:
-            self.transport.send(json.dumps(message.__dict__))
+            message_dict = message.__dict__.copy()
+            message_dict['data'] = message_dict['data'].to_dict()
+            print(f"Sending message: {json.dumps(message_dict, indent=2)}")
+            self.transport.send(json.dumps(message_dict))
             return await future
         except Exception as error:
-            if self.client_id in self.pending_requests:
-                self.pending_requests[self.client_id].timeout_handle.cancel()
-                del self.pending_requests[self.client_id]
+            if self.clientId in self.pending_requests:
+                self.pending_requests[self.clientId].timeout_handle.cancel()
+                del self.pending_requests[self.clientId]
             raise error
 
     def _handle_timeout(self, request_id: str) -> None:
@@ -232,6 +235,13 @@ class RooCodeClient:
             data=values
         )
         await self._send_command(command)
+
+    async def get_configuration(self) -> RooCodeSettings:
+        command = TaskCommand(
+            command_name=TaskCommandName.GET_CONFIGURATION,
+            data=None
+        )
+        return await self._send_command(command)
 
     async def is_ready(self) -> bool:
         command = TaskCommand(

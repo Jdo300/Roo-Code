@@ -4,33 +4,34 @@ from typing import Any, Dict, List, Optional, Union, Callable
 import uuid
 
 class IpcMessageType(str, Enum):
-    ACK = "ack"
-    TASK_COMMAND = "taskCommand"
-    TASK_EVENT = "taskEvent"
+    ACK = "Ack"
+    TASK_COMMAND = "TaskCommand"
+    TASK_EVENT = "TaskEvent"
 
 class IpcOrigin(str, Enum):
     CLIENT = "client"
     SERVER = "server"
 
 class TaskCommandName(str, Enum):
-    START_NEW_TASK = "startNewTask"
-    RESUME_TASK = "resumeTask"
-    IS_TASK_IN_HISTORY = "isTaskInHistory"
-    GET_CURRENT_TASK_STACK = "getCurrentTaskStack"
-    CLEAR_CURRENT_TASK = "clearCurrentTask"
-    CANCEL_CURRENT_TASK = "cancelCurrentTask"
-    SEND_MESSAGE = "sendMessage"
-    PRESS_PRIMARY_BUTTON = "pressPrimaryButton"
-    PRESS_SECONDARY_BUTTON = "pressSecondaryButton"
-    SET_CONFIGURATION = "setConfiguration"
-    IS_READY = "isReady"
-    GET_MESSAGES = "getMessages"
-    GET_TOKEN_USAGE = "getTokenUsage"
-    CREATE_PROFILE = "createProfile"
-    GET_PROFILES = "getProfiles"
-    SET_ACTIVE_PROFILE = "setActiveProfile"
+    START_NEW_TASK = "StartNewTask"
+    RESUME_TASK = "ResumeTask"
+    IS_TASK_IN_HISTORY = "IsTaskInHistory"
+    GET_CURRENT_TASK_STACK = "GetCurrentTaskStack"
+    CLEAR_CURRENT_TASK = "ClearCurrentTask"
+    CANCEL_CURRENT_TASK = "CancelCurrentTask"
+    SEND_MESSAGE = "SendMessage"
+    PRESS_PRIMARY_BUTTON = "PressPrimaryButton"
+    PRESS_SECONDARY_BUTTON = "PressSecondaryButton"
+    SET_CONFIGURATION = "SetConfiguration"
+    GET_CONFIGURATION = "GetConfiguration"
+    IS_READY = "IsReady"
+    GET_MESSAGES = "GetMessages"
+    GET_TOKEN_USAGE = "GetTokenUsage"
+    CREATE_PROFILE = "CreateProfile"
+    GET_PROFILES = "GetProfiles"
+    SET_ACTIVE_PROFILE = "SetActiveProfile"
     GET_ACTIVE_PROFILE = "getActiveProfile"
-    DELETE_PROFILE = "deleteProfile"
+    DELETE_PROFILE = "DeleteProfile"
 
 @dataclass
 class RooCodeClientConfig:
@@ -71,13 +72,19 @@ class TokenUsage:
 class IpcMessage:
     type: IpcMessageType
     origin: IpcOrigin
-    client_id: str
+    clientId: str
     data: Any
 
 @dataclass
 class TaskCommand:
     command_name: TaskCommandName
     data: Any
+
+    def to_dict(self):
+        return {
+            "commandName": self.command_name.value,
+            "data": self.data
+        }
 
 @dataclass
 class TaskEvent:

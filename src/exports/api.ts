@@ -7,7 +7,14 @@ import { getWorkspacePath } from "../utils/path"
 import { ClineProvider } from "../core/webview/ClineProvider"
 import { openClineInNewTab } from "../activate/registerCommands"
 import { RooCodeSettings, RooCodeEvents, RooCodeEventName } from "../schemas"
-import { IpcMessageType, TaskCommandName, TaskCommand, IpcOrigin } from "evals/packages/types/src/ipc"
+import { z } from "zod" // Import z
+import {
+	IpcMessageType,
+	TaskCommandName,
+	TaskCommand,
+	IpcOrigin,
+	taskCommandSchema,
+} from "evals/packages/types/src/ipc" // Import taskCommandSchema
 
 import { RooCodeAPI } from "./interface"
 import { IpcServer } from "./ipc"
@@ -72,9 +79,12 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 
 			// Removed async keyword for debugging 'never' type error
 			ipc.on(IpcMessageType.TaskCommand as any, (clientId: string, data: TaskCommand) => {
+				// Use type assertions to narrow down the type of data.data based on commandName
 				switch (data.commandName) {
 					case TaskCommandName.StartNewTask: {
-						const { configuration, text, images, newTab } = data.data
+						const { configuration, text, images, newTab } = data.data as z.infer<
+							(typeof taskCommandSchema.options)[0]
+						>["data"]
 						this.log(`[API] ${TaskCommandName.StartNewTask} -> ${text}, ${JSON.stringify(configuration)}`)
 						this.startNewTask({ configuration, text, images, newTab }).catch((err) =>
 							this.log("Error in startNewTask:", err),
@@ -82,13 +92,13 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 						break
 					}
 					case TaskCommandName.CancelTask: {
-						const taskId = data.data as string
+						const taskId = data.data as z.infer<(typeof taskCommandSchema.options)[1]>["data"]
 						this.log(`[API] ${TaskCommandName.CancelTask} -> ${taskId}`)
 						this.cancelTask(taskId).catch((err) => this.log("Error in cancelTask:", err)) // Handle promise
 						break
 					}
 					case TaskCommandName.CloseTask: {
-						const taskId = data.data as string
+						const taskId = data.data as z.infer<(typeof taskCommandSchema.options)[2]>["data"]
 						this.log(`[API] ${TaskCommandName.CloseTask} -> ${taskId}`)
 						// These are async but we don't need to wait in the listener
 						vscode.commands.executeCommand("workbench.action.files.saveFiles")
@@ -96,102 +106,109 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 						break
 					}
 					case TaskCommandName.GetCurrentTaskStack: {
+						// data.data is undefined for this command
 						this.log(`[API] ${TaskCommandName.GetCurrentTaskStack}`)
 						this.getCurrentTaskStack() // Not async
 						break
 					}
 					case TaskCommandName.ClearCurrentTask: {
-						const lastMessage = data.data as string | undefined
+						const lastMessage = data.data as z.infer<(typeof taskCommandSchema.options)[4]>["data"]
 						this.log(`[API] ${TaskCommandName.ClearCurrentTask} -> ${lastMessage}`)
 						this.clearCurrentTask(lastMessage).catch((err) => this.log("Error in clearCurrentTask:", err)) // Handle promise
 						break
 					}
 					case TaskCommandName.CancelCurrentTask: {
+						// data.data is undefined for this command
 						this.log(`[API] ${TaskCommandName.CancelCurrentTask}`)
 						this.cancelCurrentTask().catch((err) => this.log("Error in cancelCurrentTask:", err)) // Handle promise
 						break
 					}
 					case TaskCommandName.SendMessage: {
-						const { message, images } = data.data as { message?: string; images?: string[] }
+						const { message, images } = data.data as z.infer<(typeof taskCommandSchema.options)[6]>["data"]
 						this.log(`[API] ${TaskCommandName.SendMessage} -> ${message}, ${images?.length} images`)
 						this.sendMessage(message, images).catch((err) => this.log("Error in sendMessage:", err)) // Handle promise
 						break
 					}
 					case TaskCommandName.PressPrimaryButton: {
+						// data.data is undefined for this command
 						this.log(`[API] ${TaskCommandName.PressPrimaryButton}`)
 						this.pressPrimaryButton().catch((err) => this.log("Error in pressPrimaryButton:", err)) // Handle promise
 						break
 					}
 					case TaskCommandName.PressSecondaryButton: {
+						// data.data is undefined for this command
 						this.log(`[API] ${TaskCommandName.PressSecondaryButton}`)
 						this.pressSecondaryButton().catch((err) => this.log("Error in pressSecondaryButton:", err)) // Handle promise
 						break
 					}
 					case TaskCommandName.SetConfiguration: {
-						const values = data.data as RooCodeSettings
+						const values = data.data as z.infer<(typeof taskCommandSchema.options)[9]>["data"]
 						this.log(`[API] ${TaskCommandName.SetConfiguration} -> ${JSON.stringify(values)}`)
 						this.setConfiguration(values).catch((err) => this.log("Error in setConfiguration:", err)) // Handle promise
 						break
 					}
 					case TaskCommandName.IsReady: {
+						// data.data is undefined for this command
 						this.log(`[API] ${TaskCommandName.IsReady}`)
 						this.isReady() // Not async
 						break
 					}
 					case TaskCommandName.GetMessages: {
-						const taskId = data.data as string
+						const taskId = data.data as z.infer<(typeof taskCommandSchema.options)[11]>["data"]
 						this.log(`[API] ${TaskCommandName.GetMessages} -> ${taskId}`)
 						this.getMessages(taskId) // Not async
 						break
 					}
 					case TaskCommandName.GetTokenUsage: {
-						const taskId = data.data as string
+						const taskId = data.data as z.infer<(typeof taskCommandSchema.options)[12]>["data"]
 						this.log(`[API] ${TaskCommandName.GetTokenUsage} -> ${taskId}`)
 						this.getTokenUsage(taskId) // Not async
 						break
 					}
 					case TaskCommandName.Log: {
-						const message = data.data as string
+						const message = data.data as z.infer<(typeof taskCommandSchema.options)[13]>["data"]
 						this.log(`[API] ${TaskCommandName.Log} -> ${message}`)
 						this.log(message) // Not async
 						break
 					}
 					case TaskCommandName.ResumeTask: {
-						const taskId = data.data as string
+						const taskId = data.data as z.infer<(typeof taskCommandSchema.options)[14]>["data"]
 						this.log(`[API] ${TaskCommandName.ResumeTask} -> ${taskId}`)
 						this.resumeTask(taskId).catch((err) => this.log("Error in resumeTask:", err)) // Handle promise
 						break
 					}
 					case TaskCommandName.IsTaskInHistory: {
-						const taskId = data.data as string
+						const taskId = data.data as z.infer<(typeof taskCommandSchema.options)[15]>["data"]
 						this.log(`[API] ${TaskCommandName.IsTaskInHistory} -> ${taskId}`)
 						this.isTaskInHistory(taskId) // Not async (but returns promise, should be handled if result needed)
 						break
 					}
 					case TaskCommandName.CreateProfile: {
-						const name = data.data as string
+						const name = data.data as z.infer<(typeof taskCommandSchema.options)[16]>["data"]
 						this.log(`[API] ${TaskCommandName.CreateProfile} -> ${name}`)
 						this.createProfile(name).catch((err) => this.log("Error in createProfile:", err)) // Handle promise
 						break
 					}
 					case TaskCommandName.GetProfiles: {
+						// data.data is undefined for this command
 						this.log(`[API] ${TaskCommandName.GetProfiles}`)
 						this.getProfiles() // Not async
 						break
 					}
 					case TaskCommandName.SetActiveProfile: {
-						const name = data.data as string
+						const name = data.data as z.infer<(typeof taskCommandSchema.options)[18]>["data"]
 						this.log(`[API] ${TaskCommandName.SetActiveProfile} -> ${name}`)
 						this.setActiveProfile(name).catch((err) => this.log("Error in setActiveProfile:", err)) // Handle promise
 						break
 					}
 					case TaskCommandName.getActiveProfile: {
+						// data.data is undefined for this command
 						this.log(`[API] ${TaskCommandName.getActiveProfile}`)
 						this.getActiveProfile() // Not async
 						break
 					}
 					case TaskCommandName.DeleteProfile: {
-						const name = data.data as string
+						const name = data.data as z.infer<(typeof taskCommandSchema.options)[20]>["data"]
 						this.log(`[API] ${TaskCommandName.DeleteProfile} -> ${name}`)
 						this.deleteProfile(name).catch((err) => this.log("Error in deleteProfile:", err)) // Handle promise
 						break

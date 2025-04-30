@@ -62,7 +62,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.GetCurrentTaskStack),
-		data: z.undefined(),
+		data: z.undefined().optional(), // Changed to optional undefined
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.ClearCurrentTask),
@@ -70,7 +70,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.CancelCurrentTask),
-		data: z.undefined(),
+		data: z.undefined().optional(), // Changed to optional undefined
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.SendMessage),
@@ -81,11 +81,11 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.PressPrimaryButton),
-		data: z.undefined(),
+		data: z.undefined().optional(), // Changed to optional undefined
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.PressSecondaryButton),
-		data: z.undefined(),
+		data: z.undefined().optional(), // Changed to optional undefined
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.SetConfiguration),
@@ -93,7 +93,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.IsReady),
-		data: z.undefined(),
+		data: z.undefined().optional(), // Changed to optional undefined
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.GetMessages),
@@ -121,7 +121,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.GetProfiles),
-		data: z.undefined(),
+		data: z.undefined().optional(), // Changed to optional undefined
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.SetActiveProfile),
@@ -129,7 +129,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.getActiveProfile),
-		data: z.undefined(),
+		data: z.undefined().optional(), // Changed to optional undefined
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.DeleteProfile),

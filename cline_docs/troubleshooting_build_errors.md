@@ -15,20 +15,20 @@ Build failures often manifest as errors during the `npm run build` process, incl
 
 A systematic approach is crucial:
 
-1.  **Run Full Build:** Start with `npm run build` to see all initial errors.
-2.  **Isolate Errors:** Run individual scripts (`npm run lint`, `npm run check-types`, `cd webview-ui && npm run build`, `npm run build:esbuild`) to pinpoint the source of failures.
-3.  **Examine Code & Config:** Use `read_file` to inspect relevant files (`package.json` in root and sub-projects, build scripts, source files with errors). Use `search_files` to find definitions or specific code patterns.
-4.  **Fix Code Issues:** Use `apply_diff` for targeted code modifications based on error messages and code analysis.
-5.  **Investigate Environment:** If build failures persist or seem inconsistent, investigate the Node.js environment:
+1. **Run Full Build:** Start with `npm run build` to see all initial errors.
+2. **Isolate Errors:** Run individual scripts (`npm run lint`, `npm run check-types`, `cd webview-ui && npm run build`, `npm run build:esbuild`) to pinpoint the source of failures.
+3. **Examine Code & Config:** Use `read_file` to inspect relevant files (`package.json` in root and sub-projects, build scripts, source files with errors). Use `search_files` to find definitions or specific code patterns.
+4. **Fix Code Issues:** Use `apply_diff` for targeted code modifications based on error messages and code analysis.
+5. **Investigate Environment:** If build failures persist or seem inconsistent, investigate the Node.js environment:
     - Check globally installed packages (`pnpm list -g`, `npm list -g`).
     - Check Node.js and package manager versions (`node -v`, `npm -v`, `pnpm --version`).
     - Check TypeScript version (`tsc --version`).
     - Verify package manager global configuration (`pnpm config get global-bin-dir`).
     - Check system PATH (`echo $env:PATH` on Windows).
     - Use `brave_search` and `context7` to research specific error messages and known compatibility issues (e.g., `vsce` with pnpm).
-6.  **Address Environmental Issues:** Use commands like `pnpm setup`, `pnpm config set`, `npm install -g`, `pnpm add -g` (if global setup works), or manual PATH updates. Be aware that VS Code restarts might be necessary for environment changes to take effect.
-7.  **Reinstall Dependencies:** After environmental fixes or significant code changes, run `pnpm install` (or `npm install` if switching package managers) from the root to ensure dependencies are correctly installed and linked.
-8.  **Re-run Build Steps:** After each fix, re-run the relevant build steps to confirm the issue is resolved.
+6. **Address Environmental Issues:** Use commands like `pnpm setup`, `pnpm config set`, `npm install -g`, `pnpm add -g` (if global setup works), or manual PATH updates. Be aware that VS Code restarts might be necessary for environment changes to take effect.
+7. **Reinstall Dependencies:** After environmental fixes or significant code changes, run `pnpm install` (or `npm install` if switching package managers) from the root to ensure dependencies are correctly installed and linked.
+8. **Re-run Build Steps:** After each fix, re-run the relevant build steps to confirm the issue is resolved.
 
 ## Common Problems and Solutions
 

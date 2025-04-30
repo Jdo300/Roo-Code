@@ -93,10 +93,11 @@ class RooCodeClient {
 					this.eventHandlers.get(event.event_name)(event.payload)
 				}
 			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TASK_COMMAND) {
-				if (parsedMsg.client_id && this.pendingRequests.has(parsedMsg.client_id)) {
-					const request = this.pendingRequests.get(parsedMsg.client_id)
+				// Use parsedMsg.clientId (camelCase) to match the schema
+				if (parsedMsg.clientId && this.pendingRequests.has(parsedMsg.clientId)) {
+					const request = this.pendingRequests.get(parsedMsg.clientId)
 					clearTimeout(request.timeout)
-					this.pendingRequests.delete(parsedMsg.client_id)
+					this.pendingRequests.delete(parsedMsg.clientId)
 					request.resolve(parsedMsg.data)
 				}
 			} else {
@@ -160,8 +161,10 @@ class RooCodeClient {
 				origin: RooCodeClient.IpcOrigin.CLIENT,
 				clientId: this.clientId, // Use camelCase like Python IpcMessage
 				data: {
+					// This 'data' field should contain the commandName and payload directly
 					commandName: RooCodeClient.TaskCommandName[commandName], // Use enum value
-					data: data, // Command-specific payload
+					// Include the data property only if the data parameter is not undefined
+					...(data !== undefined ? { data: data } : {}),
 				},
 			}
 
@@ -304,22 +307,24 @@ class RooCodeClient {
 						resolve()
 					})
 
-					socket.on("connect", () => {
-						console.log("Connected to server")
+					// Remove the custom "Connect" message as it's not part of the schema and causes server errors.
+					// The client should rely on the server's Ack message to confirm connection.
+					// socket.on("connect", () => {
+					// 	console.log("Connected to server")
 
-						// Send Connect message with process info
-						const connectMessage = {
-							type: "Connect", // Special message type for initial connection
-							origin: RooCodeClient.IpcOrigin.CLIENT,
-							clientId: this.clientId, // Use camelCase like Python IpcMessage
-							data: {
-								pid: process.pid,
-								ppid: process.ppid,
-							},
-						}
-						// Send connect message with newline like Python client
-						socket.emit("message", JSON.stringify(connectMessage) + "\n")
-					})
+					// 	// Send Connect message with process info
+					// 	const connectMessage = {
+					// 		type: "Connect", // Special message type for initial connection
+					// 		origin: RooCodeClient.IpcOrigin.CLIENT,
+					// 		clientId: this.clientId, // Use camelCase like Python IpcMessage
+					// 		data: {
+					// 			pid: process.pid,
+					// 			ppid: process.ppid,
+					// 		},
+					// 	}
+					// 	// Send connect message with newline like Python client
+					// 	socket.emit("message", JSON.stringify(connectMessage) + "\n")
+					// })
 
 					socket.on("error", (err) => {
 						console.error("Connection error:", err)
@@ -345,7 +350,8 @@ class RooCodeClient {
 	}
 
 	async getConfiguration() {
-		return this._sendCommand("GetConfiguration", null)
+		// The schema expects data to be undefined for GetConfiguration
+		return this._sendCommand("GetConfiguration", undefined)
 	}
 
 	async setConfiguration(settings) {

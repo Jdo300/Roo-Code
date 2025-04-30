@@ -71,10 +71,13 @@ class TcpTransport(Transport):
         self._emit('close')
 
     def send(self, data: str) -> None:
+        print(f"[TcpTransport#send] Sending data: {data}")
         if not self.connected or not self.writer:
             raise ConnectionError("Not connected")
         try:
             self.writer.write((data + '\n').encode())
+            # Add the drain call to ensure data is sent immediately
+            asyncio.get_running_loop().create_task(self.writer.drain())
         except Exception as e:
             self._emit('error', e)
             raise

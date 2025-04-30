@@ -34,6 +34,9 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		enableLogging = false,
 	) {
 		super()
+		outputChannelLog(outputChannel, "[API Constructor] Logging directly to outputChannel.")
+		this.log = () => {}
+		this.log?.("[API Constructor] Entered API constructor.")
 
 		this.outputChannel = outputChannel
 		this.sidebarProvider = provider
@@ -42,6 +45,7 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		if (enableLogging) {
 			this.log = (...args: unknown[]) => {
 				outputChannelLog(this.outputChannel, ...args)
+				this.outputChannel.show()
 				console.log(args)
 			}
 
@@ -52,6 +56,7 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 
 		this.registerListeners(this.sidebarProvider)
 
+		this.log("About to check ipcConfig in API constructor. ipcConfig value:", ipcConfig)
 		if (ipcConfig) {
 			const ipcOptions = ipcConfig.tcpPort
 				? { host: ipcConfig.tcpHost || "localhost", port: ipcConfig.tcpPort }

@@ -1,82 +1,24 @@
-const ipc = require("node-ipc").default
+import { default as ipc } from "node-ipc"
+import { EventEmitter } from "events"
 
-// Configure IPC
-ipc.config.id = "test-node-client"
-ipc.config.retry = 1500
-ipc.config.maxRetries = 3
-ipc.config.silent = false
-ipc.config.sync = false
-ipc.config.unlink = false
-ipc.config.appspace = ""
-ipc.config.socketRoot = ""
-ipc.config.stopRetrying = true
-
-class RooCodeClient {
+class RooCodeClient extends EventEmitter {
 	constructor() {
-		this.eventHandlers = new Map()
-		this.buffer = "" // Message buffer like Python client
+		super()
+		this.buffer = ""
 		this.clientId = Math.random().toString(36).substring(2)
-		this.pendingRequests = new Map() // Track pending requests by clientId
+		this.pendingRequests = new Map()
 	}
 
 	_processBuffer() {
 		const messages = this.buffer.split("\n")
-		this.buffer = messages.pop() || "" // Keep partial message in buffer
+		this.buffer = messages.pop() || ""
 
 		for (const message of messages) {
 			try {
 				const parsed = JSON.parse(message)
 				this._handleMessage(parsed)
 			} catch (error) {
-				if (this.eventHandlers.has("error")) {
-					this.eventHandlers.get("error")(`Failed to parse message: ${error}`)
-				}
-			}
-		}
-	}
-
-	_handleMessage(message) {
-		try {
-			if (message.type === RooCodeClient.IpcMessageType.ACK) {
-				if (this.eventHandlers.has("connect")) {
-					this.eventHandlers.get("connect")(message.data)
-				}
-			} else if (message.type === RooCodeClient.IpcMessageType.TASK_EVENT) {
-				const event = message.data
-				if (this.eventHandlers.has(event.event_name)) {
-					this.eventHandlers.get(event.event_name)(event.payload)
-				}
-			} else if (message.type === RooCodeClient.IpcMessageType.TASK_COMMAND) {
-				if (message.clientId && this.pendingRequests.has(message.clientId)) {
-					const request = this.pendingRequests.get(message.clientId)
-					clearTimeout(request.timeout)
-					this.pendingRequests.delete(message.clientId)
-					request.resolve(message.data)
-				}
-			} else {
-				if (this.eventHandlers.has("error")) {
-					this.eventHandlers.get("error")(`Unknown message type: ${message.type}`)
-				}
-			}
-		} catch (error) {
-			if (this.eventHandlers.has("error")) {
-				this.eventHandlers.get("error")(`Failed to handle message: ${error}`)
-			}
-		}
-	}
-
-	_processBuffer() {
-		const messages = this.buffer.split("\n")
-		this.buffer = messages.pop() || "" // Keep partial message in buffer
-
-		for (const message of messages) {
-			try {
-				const parsed = JSON.parse(message)
-				this._handleMessage(parsed)
-			} catch (error) {
-				if (this.eventHandlers.has("error")) {
-					this.eventHandlers.get("error")(`Failed to parse message: ${error}`)
-				}
+				this.emit("error", `Failed to parse message: ${error}`)
 			}
 		}
 	}
@@ -84,16 +26,11 @@ class RooCodeClient {
 	_handleMessage(parsedMsg) {
 		try {
 			if (parsedMsg.type === RooCodeClient.IpcMessageType.ACK) {
-				if (this.eventHandlers.has("connect")) {
-					this.eventHandlers.get("connect")(parsedMsg.data)
-				}
+				this.emit("connect", parsedMsg.data)
 			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TASK_EVENT) {
-				const event = parsedMsg.data
-				if (this.eventHandlers.has(event.event_name)) {
-					this.eventHandlers.get(event.event_name)(event.payload)
-				}
+				const { eventName, payload } = parsedMsg.data
+				this.emit(eventName, payload)
 			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TASK_COMMAND) {
-				// Use parsedMsg.clientId (camelCase) to match the schema
 				if (parsedMsg.clientId && this.pendingRequests.has(parsedMsg.clientId)) {
 					const request = this.pendingRequests.get(parsedMsg.clientId)
 					clearTimeout(request.timeout)
@@ -101,18 +38,13 @@ class RooCodeClient {
 					request.resolve(parsedMsg.data)
 				}
 			} else {
-				if (this.eventHandlers.has("error")) {
-					this.eventHandlers.get("error")(`Unknown message type: ${parsedMsg.type}`)
-				}
+				this.emit("error", `Unknown message type: ${parsedMsg.type}`)
 			}
 		} catch (error) {
-			if (this.eventHandlers.has("error")) {
-				this.eventHandlers.get("error")(`Failed to handle message: ${error}`)
-			}
+			this.emit("error", `Failed to handle message: ${error}`)
 		}
 	}
 
-	// Message types matching Python enums exactly
 	static IpcMessageType = {
 		ACK: "Ack",
 		TASK_COMMAND: "TaskCommand",
@@ -124,14 +56,14 @@ class RooCodeClient {
 		SERVER: "server",
 	}
 
-	// Command names matching Python enum values exactly
 	static TaskCommandName = {
 		START_NEW_TASK: "StartNewTask",
 		RESUME_TASK: "ResumeTask",
 		IS_TASK_IN_HISTORY: "IsTaskInHistory",
 		GET_CURRENT_TASK_STACK: "GetCurrentTaskStack",
 		CLEAR_CURRENT_TASK: "ClearCurrentTask",
-		CANCEL_CURRENT_TASK: "CancelCurrentTask",
+		CANCEL_TASK: "CancelTask",
+		CLOSE_TASK: "CloseTask",
 		SEND_MESSAGE: "SendMessage",
 		PRESS_PRIMARY_BUTTON: "PressPrimaryButton",
 		PRESS_SECONDARY_BUTTON: "PressSecondaryButton",
@@ -140,14 +72,15 @@ class RooCodeClient {
 		IS_READY: "IsReady",
 		GET_MESSAGES: "GetMessages",
 		GET_TOKEN_USAGE: "GetTokenUsage",
+		LOG: "Log",
 		CREATE_PROFILE: "CreateProfile",
 		GET_PROFILES: "GetProfiles",
 		SET_ACTIVE_PROFILE: "SetActiveProfile",
-		GET_ACTIVE_PROFILE: "getActiveProfile",
+		GET_ACTIVE_PROFILE: "GetActiveProfile",
 		DELETE_PROFILE: "DeleteProfile",
 	}
 
-	_sendCommand(commandName, data) {
+	_sendCommand(commandName, commandData = {}) {
 		return new Promise((resolve, reject) => {
 			const socket = ipc.of["roo-tcp-server"]
 			if (!socket) {
@@ -155,117 +88,32 @@ class RooCodeClient {
 				return
 			}
 
-			// Create IpcMessage according to schema
+			// Create message object according to schema
 			const message = {
 				type: RooCodeClient.IpcMessageType.TASK_COMMAND,
 				origin: RooCodeClient.IpcOrigin.CLIENT,
-				clientId: this.clientId, // Use camelCase like Python IpcMessage
+				clientId: this.clientId,
 				data: {
-					// This 'data' field should contain the commandName and payload directly
-					commandName: RooCodeClient.TaskCommandName[commandName], // Use enum value
-					// Include the data property only if the data parameter is not undefined
-					...(data !== undefined ? { data: data } : {}),
+					commandName: commandName,
+					data: commandData,
 				},
 			}
 
-			// Store the pending request with 60s timeout like Python client
+			// Store the pending request with 60s timeout
 			const timeoutId = setTimeout(() => {
 				this.pendingRequests.delete(this.clientId)
 				reject(new Error(`${commandName} timeout after 60s`))
-			}, 60000) // 60 seconds for potentially long AI responses
+			}, 60000)
 
-			// Store the pending request before sending like Python client
 			this.pendingRequests.set(this.clientId, {
 				resolve,
 				timeout: timeoutId,
 			})
 
-			// Log message like Python transport
 			console.log("[TcpTransport#send] Sending data:", JSON.stringify(message))
 
-			// Send message with newline and ensure it's sent immediately like Python client
-			const messageStr = JSON.stringify(message) + "\n"
-			socket.emit("message", messageStr)
+			socket.emit("message", message)
 		})
-	}
-
-	setupEventHandlers() {
-		const socket = ipc.of["roo-tcp-server"]
-		if (!socket) {
-			throw new Error("Cannot setup handlers - socket not connected")
-		}
-
-		// Handle task-related events
-		socket.on("taskUpdate", (data) => {
-			console.log("Event: Task Update:", data)
-			if (this.eventHandlers.has("taskUpdate")) {
-				this.eventHandlers.get("taskUpdate")(data)
-			}
-		})
-
-		socket.on("taskStarted", (data) => {
-			console.log("Event: Task Started:", data)
-			if (this.eventHandlers.has("taskStarted")) {
-				this.eventHandlers.get("taskStarted")(data)
-			}
-		})
-
-		socket.on("taskCompleted", (data) => {
-			console.log("Event: Task Completed:", data)
-			if (this.eventHandlers.has("taskCompleted")) {
-				this.eventHandlers.get("taskCompleted")(data)
-			}
-		})
-
-		// Handle raw message events like Python client
-		socket.on("message", (data) => {
-			if (typeof data === "string") {
-				this.buffer += data
-				this._processBuffer()
-			} else {
-				this._handleMessage(data)
-			}
-		})
-
-		// Handle error events
-		socket.on("error", (error) => {
-			if (this.eventHandlers.has("error")) {
-				this.eventHandlers.get("error")(error)
-			}
-		})
-
-		// Handle close events
-		socket.on("close", () => {
-			if (this.eventHandlers.has("close")) {
-				this.eventHandlers.get("close")()
-			}
-		})
-
-		// Handle tool events
-		socket.on("toolUse", (data) => {
-			console.log("Event: Tool Use:", data)
-			if (this.eventHandlers.has("toolUse")) {
-				this.eventHandlers.get("toolUse")(data)
-			}
-		})
-
-		socket.on("toolResult", (data) => {
-			console.log("Event: Tool Result:", data)
-			if (this.eventHandlers.has("toolResult")) {
-				this.eventHandlers.get("toolResult")(data)
-			}
-		})
-
-		socket.on("toolError", (data) => {
-			console.error("Event: Tool Error:", data)
-			if (this.eventHandlers.has("toolError")) {
-				this.eventHandlers.get("toolError")(data)
-			}
-		})
-	}
-
-	addEventListener(event, handler) {
-		this.eventHandlers.set(event, handler)
 	}
 
 	connect() {
@@ -280,6 +128,17 @@ class RooCodeClient {
 			}, 5000)
 
 			try {
+				// Configure IPC
+				ipc.config.id = "test-node-client"
+				ipc.config.retry = 1500
+				ipc.config.maxRetries = 3
+				ipc.config.silent = false
+				ipc.config.sync = false
+				ipc.config.unlink = false
+				ipc.config.appspace = ""
+				ipc.config.socketRoot = ""
+				ipc.config.stopRetrying = true
+
 				// Connect using TCP
 				ipc.connectToNet("roo-tcp-server", host, port, () => {
 					if (!ipc.of["roo-tcp-server"]) {
@@ -290,7 +149,6 @@ class RooCodeClient {
 
 					const socket = ipc.of["roo-tcp-server"]
 
-					// Set up message handler first like Python client
 					socket.on("message", (data) => {
 						if (typeof data === "string") {
 							this.buffer += data
@@ -300,44 +158,19 @@ class RooCodeClient {
 						}
 					})
 
-					// Add connect handler for initial connection
-					this.addEventListener("connect", (data) => {
-						console.log("Connection acknowledged:", data)
-						clearTimeout(timeout)
-						resolve()
-					})
-
-					// Remove the custom "Connect" message as it's not part of the schema and causes server errors.
-					// The client should rely on the server's Ack message to confirm connection.
-					// socket.on("connect", () => {
-					// 	console.log("Connected to server")
-
-					// 	// Send Connect message with process info
-					// 	const connectMessage = {
-					// 		type: "Connect", // Special message type for initial connection
-					// 		origin: RooCodeClient.IpcOrigin.CLIENT,
-					// 		clientId: this.clientId, // Use camelCase like Python IpcMessage
-					// 		data: {
-					// 			pid: process.pid,
-					// 			ppid: process.ppid,
-					// 		},
-					// 	}
-					// 	// Send connect message with newline like Python client
-					// 	socket.emit("message", JSON.stringify(connectMessage) + "\n")
-					// })
-
 					socket.on("error", (err) => {
 						console.error("Connection error:", err)
-						clearTimeout(timeout)
-						reject(err)
+						this.emit("error", err)
 					})
 
 					socket.on("disconnect", () => {
 						console.log("Disconnected from server")
+						this.emit("disconnect")
 					})
-				})
 
-				console.log("Initiating connection...")
+					console.log("Initiating connection...")
+					resolve()
+				})
 			} catch (error) {
 				clearTimeout(timeout)
 				reject(error)
@@ -350,183 +183,164 @@ class RooCodeClient {
 	}
 
 	async getConfiguration() {
-		// The schema expects data to be undefined for GetConfiguration
-		return this._sendCommand("GetConfiguration", undefined)
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_CONFIGURATION, {})
 	}
 
 	async setConfiguration(settings) {
-		return this._sendCommand("SetConfiguration", settings)
+		this._validateConfiguration(settings)
+		return this._sendCommand(RooCodeClient.TaskCommandName.SET_CONFIGURATION, settings)
 	}
 
 	async startNewTask(text, configuration, options = {}) {
+		this._validateConfiguration(configuration)
+
 		const data = {
-			configuration: configuration,
+			configuration: {
+				...configuration,
+				__type__: "RooCodeSettings",
+			},
 			text: text,
-			images: options.images,
-			newTab: options.newTab,
+			images: options.images || [],
+			newTab: options.newTab || false,
 		}
-		return this._sendCommand("StartNewTask", data)
+		return this._sendCommand(RooCodeClient.TaskCommandName.START_NEW_TASK, data)
 	}
 
 	async isTaskInHistory(taskId) {
-		return this._sendCommand("IsTaskInHistory", taskId)
+		return this._sendCommand(RooCodeClient.TaskCommandName.IS_TASK_IN_HISTORY, taskId)
 	}
 
 	async getCurrentTaskStack() {
-		return this._sendCommand("GetCurrentTaskStack", null)
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_CURRENT_TASK_STACK, {})
 	}
 
-	async sendMessage(message) {
-		const data = { message }
-		return this._sendCommand("SendMessage", data)
+	async sendMessage(message, images = []) {
+		return this._sendCommand(RooCodeClient.TaskCommandName.SEND_MESSAGE, {
+			message,
+			images,
+		})
+	}
+
+	async pressPrimaryButton() {
+		return this._sendCommand(RooCodeClient.TaskCommandName.PRESS_PRIMARY_BUTTON, {})
+	}
+
+	async pressSecondaryButton() {
+		return this._sendCommand(RooCodeClient.TaskCommandName.PRESS_SECONDARY_BUTTON, {})
+	}
+
+	async log(message) {
+		return this._sendCommand(RooCodeClient.TaskCommandName.LOG, message)
 	}
 
 	async createProfile(name) {
-		return this._sendCommand("CreateProfile", name)
+		return this._sendCommand(RooCodeClient.TaskCommandName.CREATE_PROFILE, name)
 	}
 
 	async getProfiles() {
-		return this._sendCommand("GetProfiles", null)
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_PROFILES, {})
 	}
 
 	async setActiveProfile(name) {
-		return this._sendCommand("SetActiveProfile", name)
+		return this._sendCommand(RooCodeClient.TaskCommandName.SET_ACTIVE_PROFILE, name)
 	}
 
 	async getActiveProfile() {
-		return this._sendCommand("getActiveProfile", null)
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_ACTIVE_PROFILE, {})
 	}
 
 	async deleteProfile(name) {
-		return this._sendCommand("DeleteProfile", name)
+		return this._sendCommand(RooCodeClient.TaskCommandName.DELETE_PROFILE, name)
 	}
 
 	async clearCurrentTask(reason) {
-		return this._sendCommand("ClearCurrentTask", reason)
+		return this._sendCommand(RooCodeClient.TaskCommandName.CLEAR_CURRENT_TASK, reason)
 	}
-}
 
-// Main test function
-async function main() {
-	const client = new RooCodeClient()
+	async cancelTask(taskId) {
+		return this._sendCommand(RooCodeClient.TaskCommandName.CANCEL_TASK, taskId)
+	}
 
-	try {
-		// Connect to server
-		await client.connect()
-		console.log("Connected to server")
+	async closeTask(taskId) {
+		return this._sendCommand(RooCodeClient.TaskCommandName.CLOSE_TASK, taskId)
+	}
 
-		// Test configuration commands
-		console.log("\n--- Testing Configuration Commands ---")
-		const initialConfig = await client.getConfiguration()
-		console.log("Initial configuration:", initialConfig)
-
-		const testSettings = {
-			apiProvider: "test-provider",
-			currentApiConfigName: "test-config",
-			autoApprovalEnabled: false,
-			alwaysAllowReadOnly: false,
-			alwaysAllowWrite: false,
-			alwaysAllowBrowser: false,
-			alwaysAllowExecute: false,
-			__type__: "RooCodeSettings", // Add type information to match Python
+	_validateConfiguration(config) {
+		if (config.__type__ && config.__type__ !== "RooCodeSettings") {
+			throw new Error("Invalid __type__ field in configuration")
 		}
 
-		await client.setConfiguration(testSettings)
-		console.log("Set configuration to test values")
+		const requiredFields = [
+			"apiProvider",
+			"currentApiConfigName",
+			"autoApprovalEnabled",
+			"alwaysAllowReadOnly",
+			"alwaysAllowWrite",
+			"alwaysAllowBrowser",
+			"alwaysAllowExecute",
+		]
 
-		const updatedConfig = await client.getConfiguration()
-		console.log("Updated configuration:", updatedConfig)
-
-		// Test basic API commands
-		console.log("\n--- Testing Basic API Commands ---")
-		const taskId = await client.startNewTask("Hello from Node.js client! Test basic commands.", {
-			apiProvider: "fake-ai",
-			currentApiConfigName: "test",
-			autoApprovalEnabled: true,
-			alwaysAllowReadOnly: true,
-			alwaysAllowWrite: true,
-			alwaysAllowBrowser: true,
-			alwaysAllowExecute: true,
-		})
-		console.log("Started new task:", taskId)
-
-		const exists = await client.isTaskInHistory(taskId)
-		console.log("Task exists in history:", exists)
-
-		const stack = await client.getCurrentTaskStack()
-		console.log("Current task stack:", stack)
-
-		await client.sendMessage("Another test message from Node.js")
-		console.log("Message sent")
-
-		// Test profile operations
-		console.log("\n--- Testing Profile Operations ---")
-		const profileName = "test_profile"
-		try {
-			const createdProfile = await client.createProfile(profileName)
-			console.log("Created profile:", createdProfile)
-
-			const profiles = await client.getProfiles()
-			console.log("Available profiles:", profiles)
-
-			await client.setActiveProfile(profileName)
-			console.log("Set active profile to:", profileName)
-
-			const activeProfile = await client.getActiveProfile()
-			console.log("Current active profile:", activeProfile)
-		} catch (error) {
-			console.warn("Profile operations test failed:", error)
-		} finally {
-			try {
-				await client.deleteProfile(profileName)
-				console.log("Deleted profile:", profileName)
-			} catch (error) {
-				// Ignore if delete fails
+		for (const field of requiredFields) {
+			if (!(field in config)) {
+				throw new Error(`Missing required field: ${field}`)
 			}
 		}
 
-		// Test streaming functionality
-		console.log("\n--- Testing Streaming Functionality ---")
-		client.messageChunks = []
-		client.fullMessage = ""
+		if (typeof config.apiProvider !== "string") throw new Error("apiProvider must be a string")
+		if (typeof config.currentApiConfigName !== "string") throw new Error("currentApiConfigName must be a string")
+		if (typeof config.autoApprovalEnabled !== "boolean") throw new Error("autoApprovalEnabled must be a boolean")
+		if (typeof config.alwaysAllowReadOnly !== "boolean") throw new Error("alwaysAllowReadOnly must be a boolean")
+		if (typeof config.alwaysAllowWrite !== "boolean") throw new Error("alwaysAllowWrite must be a boolean")
+		if (typeof config.alwaysAllowBrowser !== "boolean") throw new Error("alwaysAllowBrowser must be a boolean")
+		if (typeof config.alwaysAllowExecute !== "boolean") throw new Error("alwaysAllowExecute must be a boolean")
 
-		await client.sendMessage(
-			"Write a detailed explanation of quantum entanglement. Make it at least 500 words long.",
-		)
-		console.log("Sent message to trigger streaming.")
-
-		// Wait for streaming to complete
-		await new Promise((resolve) => setTimeout(resolve, 30000))
-
-		console.log(`Streaming test: Received ${client.messageChunks.length} chunks.`)
-		console.log(`Streaming test: Full received message length: ${client.fullMessage.length}`)
-
-		if (client.messageChunks.length > 1 && client.fullMessage.length > 100) {
-			console.log("Streaming test: Streaming appears to be working and chunks were assembled.")
-		} else {
-			console.warn("Streaming test: Streaming may not have worked as expected.")
-			console.warn("Full received message content (first 200 chars):")
-			console.warn(client.fullMessage.substring(0, 200) + "...")
-		}
-
-		// Clear current task
-		await client.clearCurrentTask("All tests completed")
-		console.log("Cleared current task")
-	} catch (error) {
-		console.error("Error during test execution:", error)
-	} finally {
-		client.disconnect()
-		console.log("Disconnected from server")
+		return true
 	}
 }
 
-// Run the tests
-if (require.main === module) {
-	main().catch((error) => {
-		console.error("Unexpected error:", error)
-		process.exit(1)
+// Main execution block - connect and wait
+async function main() {
+	const client = new RooCodeClient()
+
+	client.on("connect", (data) => {
+		console.log("Event: Connected:", data)
+		console.log("Client is connected and ready to send messages.")
+		// Keep the client connected, waiting for manual trigger to send message
 	})
+
+	client.on("disconnect", () => {
+		console.log("Event: Disconnected")
+	})
+
+	client.on("error", (error) => {
+		console.error("Event: Error:", error)
+	})
+
+	// Add other event listeners if needed for debugging server responses
+	client.on("Message", (data) => {
+		console.log("Event: Message:", data)
+	})
+
+	client.on("TaskCompleted", (data) => {
+		console.log("Event: TaskCompleted:", data)
+		// Optionally disconnect after task completion if desired
+		// client.disconnect();
+	})
+
+	try {
+		await client.connect()
+		// Keep the process alive
+		setInterval(() => {}, 1000)
+	} catch (error) {
+		console.error("Failed to connect:", error)
+		process.exit(1)
+	}
 }
 
-// Export the client class
-module.exports = RooCodeClient
+main().catch((error) => {
+	console.error("Unexpected error in main:", error)
+	process.exit(1)
+})
+
+// Export the client instance for potential manual interaction if needed
+// module.exports = { RooCodeClient }; // Not needed for this test approach

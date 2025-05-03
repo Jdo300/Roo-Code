@@ -1,4 +1,4 @@
-## RooCode API Documentation
+# RooCode API Documentation
 
 Roo Code is a VS Code extension that provides AI-assisted coding features, allowing developers to interact with a language model directly within their IDE. The Roo Code API enables external applications to communicate with the extension through node-ipc, leveraging its capabilities for both Unix domain sockets and TCP connections.
 

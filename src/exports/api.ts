@@ -94,7 +94,9 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 					case TaskCommandName.CancelTask: {
 						const taskId = data.data as z.infer<(typeof taskCommandSchema.options)[1]>["data"]
 						this.log(`[API] ${TaskCommandName.CancelTask} -> ${taskId}`)
-						this.cancelTask(taskId).catch((err) => this.log("Error in cancelTask:", err)) // Handle promise
+						if (typeof taskId === "string") {
+							this.cancelTask(taskId).catch((err) => this.log("Error in cancelTask:", err)) // Handle promise
+						}
 						break
 					}
 					case TaskCommandName.CloseTask: {
@@ -114,7 +116,10 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 					case TaskCommandName.ClearCurrentTask: {
 						const lastMessage = data.data as z.infer<(typeof taskCommandSchema.options)[4]>["data"]
 						this.log(`[API] ${TaskCommandName.ClearCurrentTask} -> ${lastMessage}`)
-						this.clearCurrentTask(lastMessage).catch((err) => this.log("Error in clearCurrentTask:", err)) // Handle promise
+						const safeLastMessage = typeof lastMessage === "string" ? lastMessage : undefined
+						this.clearCurrentTask(safeLastMessage).catch((err) =>
+							this.log("Error in clearCurrentTask:", err),
+						) // Handle promise
 						break
 					}
 					case TaskCommandName.CancelCurrentTask: {
@@ -124,7 +129,8 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 						break
 					}
 					case TaskCommandName.SendMessage: {
-						const { message, images } = data.data as z.infer<(typeof taskCommandSchema.options)[6]>["data"]
+						const msgData = data.data && typeof data.data === "object" ? data.data : {}
+						const { message, images } = msgData
 						this.log(`[API] ${TaskCommandName.SendMessage} -> ${message}, ${images?.length} images`)
 						this.sendMessage(message, images).catch((err) => this.log("Error in sendMessage:", err)) // Handle promise
 						break
@@ -144,7 +150,9 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 					case TaskCommandName.SetConfiguration: {
 						const values = data.data as z.infer<(typeof taskCommandSchema.options)[9]>["data"]
 						this.log(`[API] ${TaskCommandName.SetConfiguration} -> ${JSON.stringify(values)}`)
-						this.setConfiguration(values).catch((err) => this.log("Error in setConfiguration:", err)) // Handle promise
+						if (values && typeof values === "object" && Object.keys(values).length > 0) {
+							this.setConfiguration(values).catch((err) => this.log("Error in setConfiguration:", err)) // Handle promise
+						}
 						break
 					}
 					case TaskCommandName.IsReady: {
@@ -156,7 +164,9 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 					case TaskCommandName.GetMessages: {
 						const taskId = data.data as z.infer<(typeof taskCommandSchema.options)[11]>["data"]
 						this.log(`[API] ${TaskCommandName.GetMessages} -> ${taskId}`)
-						this.getMessages(taskId) // Not async
+						if (typeof taskId === "string") {
+							this.getMessages(taskId) // Not async
+						}
 						break
 					}
 					case TaskCommandName.GetTokenUsage: {
@@ -198,7 +208,9 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 					case TaskCommandName.SetActiveProfile: {
 						const name = data.data as z.infer<(typeof taskCommandSchema.options)[18]>["data"]
 						this.log(`[API] ${TaskCommandName.SetActiveProfile} -> ${name}`)
-						this.setActiveProfile(name).catch((err) => this.log("Error in setActiveProfile:", err)) // Handle promise
+						if (typeof name === "string") {
+							this.setActiveProfile(name).catch((err) => this.log("Error in setActiveProfile:", err)) // Handle promise
+						}
 						break
 					}
 					case TaskCommandName.getActiveProfile: {
@@ -210,7 +222,9 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 					case TaskCommandName.DeleteProfile: {
 						const name = data.data as z.infer<(typeof taskCommandSchema.options)[20]>["data"]
 						this.log(`[API] ${TaskCommandName.DeleteProfile} -> ${name}`)
-						this.deleteProfile(name).catch((err) => this.log("Error in deleteProfile:", err)) // Handle promise
+						if (typeof name === "string") {
+							this.deleteProfile(name).catch((err) => this.log("Error in deleteProfile:", err)) // Handle promise
+						}
 						break
 					}
 				}

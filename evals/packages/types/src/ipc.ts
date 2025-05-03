@@ -29,6 +29,7 @@ export enum TaskCommandName {
 	PressPrimaryButton = "PressPrimaryButton",
 	PressSecondaryButton = "PressSecondaryButton",
 	SetConfiguration = "SetConfiguration",
+	GetConfiguration = "GetConfiguration",
 	IsReady = "IsReady",
 	GetMessages = "GetMessages",
 	GetTokenUsage = "GetTokenUsage",
@@ -53,6 +54,10 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 		}),
 	}),
 	z.object({
+		commandName: z.literal(TaskCommandName.GetConfiguration),
+		data: z.union([z.undefined(), z.object({})]).optional(), // Accept undefined or empty object, and make the field optional
+	}),
+	z.object({
 		commandName: z.literal(TaskCommandName.CancelTask),
 		data: z.string(),
 	}),
@@ -62,7 +67,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.GetCurrentTaskStack),
-		data: z.undefined().optional(), // Changed to optional undefined
+		data: z.union([z.undefined(), z.object({})]).optional(), // Accept undefined or empty object, and make the field optional
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.ClearCurrentTask),
@@ -70,7 +75,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.CancelCurrentTask),
-		data: z.undefined().optional(), // Changed to optional undefined
+		data: z.union([z.undefined(), z.object({})]).optional(), // Accept undefined or empty object, and make the field optional
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.SendMessage),
@@ -81,11 +86,11 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.PressPrimaryButton),
-		data: z.undefined().optional(), // Changed to optional undefined
+		data: z.union([z.undefined(), z.object({})]).optional(), // Accept undefined or empty object, and make the field optional
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.PressSecondaryButton),
-		data: z.undefined().optional(), // Changed to optional undefined
+		data: z.union([z.undefined(), z.object({})]).optional(), // Accept undefined or empty object, and make the field optional
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.SetConfiguration),
@@ -93,7 +98,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.IsReady),
-		data: z.undefined().optional(), // Changed to optional undefined
+		data: z.union([z.undefined(), z.object({})]).optional(), // Accept undefined or empty object, and make the field optional
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.GetMessages),
@@ -121,7 +126,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.GetProfiles),
-		data: z.undefined().optional(), // Changed to optional undefined
+		data: z.union([z.undefined(), z.object({})]).optional(), // Accept undefined or empty object, and make the field optional
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.SetActiveProfile),
@@ -129,7 +134,7 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.getActiveProfile),
-		data: z.undefined().optional(), // Changed to optional undefined
+		data: z.union([z.undefined(), z.object({})]).optional(), // Accept undefined or empty object, and make the field optional
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.DeleteProfile),
@@ -251,7 +256,10 @@ export const ipcMessageSchema = z.discriminatedUnion("type", [
 		type: z.literal(IpcMessageType.TaskCommand),
 		origin: z.literal(IpcOrigin.Client),
 		clientId: z.string(),
-		data: taskCommandSchema,
+		// Define commandName as an enum of all possible command names
+		commandName: z.nativeEnum(TaskCommandName),
+		// Define data as a union of all possible data schemas from taskCommandSchema options
+		data: z.any().optional(), // Temporarily simplify data schema to any().optional() for debugging
 	}),
 	z.object({
 		type: z.literal(IpcMessageType.TaskEvent),

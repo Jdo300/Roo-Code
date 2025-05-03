@@ -1,57 +1,29 @@
-const RooCodeClient = require("./test-node-client")
+import RooCodeClient from "./test-node-client.js"
 
 async function testStartTask() {
 	const client = new RooCodeClient()
 
 	try {
-		// Set up event handlers like Python client
-		client.addEventListener("connect", (data) => {
+		// Set up event handlers according to API schema
+		client.on("connect", (data) => {
 			console.log("Event: Connected:", data)
 		})
 
-		client.addEventListener("disconnect", () => {
+		client.on("disconnect", () => {
 			console.log("Event: Disconnected")
 		})
 
-		client.addEventListener("error", (error) => {
+		client.on("error", (error) => {
 			console.error("Event: Error:", error)
-		})
-
-		client.addEventListener("taskUpdate", (data) => {
-			console.log("Event: Task update:", data)
-		})
-
-		client.addEventListener("taskStarted", (data) => {
-			console.log("Event: Task Started:", data)
-		})
-
-		client.addEventListener("taskCompleted", (data) => {
-			console.log("Event: Task Completed:", data)
-		})
-
-		client.addEventListener("messageReceived", (data) => {
-			console.log("Event: Message Received (chunk):", data)
-		})
-
-		client.addEventListener("toolUse", (data) => {
-			console.log("Event: Tool Use:", data)
-		})
-
-		client.addEventListener("toolResult", (data) => {
-			console.log("Event: Tool Result:", data)
-		})
-
-		client.addEventListener("toolError", (data) => {
-			console.error("Event: Tool Error:", data)
 		})
 
 		await client.connect()
 		console.log("Connected to server")
 
-		// Create test configuration matching schema
+		// Skip getting configuration, use minimal config with Gemini provider
 		const testConfig = {
-			apiProvider: "fake-ai",
-			currentApiConfigName: "test-config",
+			apiProvider: "gemini",
+			currentApiConfigName: "gemini",
 			autoApprovalEnabled: true,
 			alwaysAllowReadOnly: true,
 			alwaysAllowWrite: true,
@@ -64,14 +36,37 @@ async function testStartTask() {
 		console.log("Configuration:", testConfig)
 		console.log("Text:", "Test task from Node.js client")
 
-		const taskId = await client.startNewTask("Test task from Node.js client", testConfig)
+		try {
+			const taskId = await client.startNewTask("Test task from Node.js client", testConfig)
+			console.log("Success! Task created with ID:", taskId)
 
-		console.log("Success! Task created with ID:", taskId)
+			// Wait for task completion or timeout
+			await new Promise((resolve, reject) => {
+				const timeout = setTimeout(() => {
+					reject(new Error("Task timeout after 60s"))
+				}, 60000)
+
+				client.on("TaskCompleted", () => {
+					clearTimeout(timeout)
+					resolve()
+				})
+
+				client.on("TaskAborted", (error) => {
+					clearTimeout(timeout)
+					reject(new Error(`Task aborted: ${error}`))
+				})
+			})
+		} catch (error) {
+			console.error("Error starting/running task:", error)
+			throw error
+		}
 	} catch (error) {
 		console.error("Error during test:", error)
 	} finally {
-		client.disconnect()
-		console.log("Disconnected from server")
+		if (client) {
+			client.disconnect()
+			console.log("Disconnected from server")
+		}
 	}
 }
 

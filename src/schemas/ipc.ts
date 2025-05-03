@@ -22,6 +22,25 @@ export enum TaskCommandName {
 	StartNewTask = "StartNewTask",
 	CancelTask = "CancelTask",
 	CloseTask = "CloseTask",
+	GetCurrentTaskStack = "GetCurrentTaskStack",
+	ClearCurrentTask = "ClearCurrentTask",
+	CancelCurrentTask = "CancelCurrentTask",
+	SendMessage = "SendMessage",
+	PressPrimaryButton = "PressPrimaryButton",
+	PressSecondaryButton = "PressSecondaryButton",
+	SetConfiguration = "SetConfiguration",
+	GetConfiguration = "GetConfiguration",
+	IsReady = "IsReady",
+	GetMessages = "GetMessages",
+	GetTokenUsage = "GetTokenUsage",
+	Log = "Log",
+	ResumeTask = "ResumeTask",
+	IsTaskInHistory = "IsTaskInHistory",
+	CreateProfile = "CreateProfile",
+	GetProfiles = "GetProfiles",
+	SetActiveProfile = "SetActiveProfile",
+	GetActiveProfile = "GetActiveProfile",
+	DeleteProfile = "DeleteProfile",
 }
 
 export const taskCommandSchema = z.discriminatedUnion("commandName", [
@@ -40,6 +59,89 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	}),
 	z.object({
 		commandName: z.literal(TaskCommandName.CloseTask),
+		data: z.string(),
+	}),
+	// Task Management Commands
+	z.object({
+		commandName: z.literal(TaskCommandName.GetCurrentTaskStack),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.ClearCurrentTask),
+		data: z.string().optional(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.CancelCurrentTask),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.SendMessage),
+		data: z.object({
+			message: z.string().optional(),
+			images: z.array(z.string()).optional(),
+		}),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.PressPrimaryButton),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.PressSecondaryButton),
+		data: z.undefined(),
+	}),
+	// Configuration Commands
+	z.object({
+		commandName: z.literal(TaskCommandName.SetConfiguration),
+		data: z.any(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.GetConfiguration),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.IsReady),
+		data: z.undefined(),
+	}),
+	// Task Information Commands
+	z.object({
+		commandName: z.literal(TaskCommandName.GetMessages),
+		data: z.string(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.GetTokenUsage),
+		data: z.string(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.Log),
+		data: z.string(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.ResumeTask),
+		data: z.string(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.IsTaskInHistory),
+		data: z.string(),
+	}),
+	// Profile Management Commands
+	z.object({
+		commandName: z.literal(TaskCommandName.CreateProfile),
+		data: z.string(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.GetProfiles),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.SetActiveProfile),
+		data: z.string(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.GetActiveProfile),
+		data: z.undefined(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.DeleteProfile),
 		data: z.string(),
 	}),
 ])

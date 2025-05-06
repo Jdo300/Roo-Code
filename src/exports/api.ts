@@ -106,12 +106,23 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	private sendResponse(clientId: string, commandName: TaskCommandName, data: any): void {
 		if (this.ipc) {
 			this.ipc.send(clientId, {
-				type: IpcMessageType.TaskCommand,
-				origin: IpcOrigin.Client,
-				clientId,
+				type: IpcMessageType.TaskEvent,
+				origin: IpcOrigin.Server,
+				relayClientId: clientId,
 				data: {
-					commandName,
-					data,
+					eventName: RooCodeEventName.Message,
+					payload: [
+						{
+							taskId: clientId,
+							action: "created",
+							message: {
+								ts: Date.now(),
+								type: "say",
+								text: JSON.stringify({ commandName, data }),
+								partial: false,
+							},
+						},
+					],
 				},
 			})
 		}
@@ -181,84 +192,194 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		})
 	}
 
-	public async startNewTask(_options: {
+	// --- Task Management ---
+	public async startNewTask({
+		configuration,
+		text,
+		images,
+		newTab: _newTab, // Rename in destructuring, ignoring _newTab
+	}: {
 		configuration?: RooCodeSettings
 		text?: string
 		images?: string[]
 		newTab?: boolean
 	}): Promise<string> {
-		throw new Error("Method not implemented.")
+		if (configuration) {
+			await this.sidebarProvider.updateApiConfiguration(configuration)
+		}
+		const cline = await this.sidebarProvider.initClineWithTask(text, images)
+		// No explicit response needed here, TaskCreated event will be emitted by ClineProvider listener
+		return cline.taskId
 	}
 
-	public async resumeTask(_taskId: string): Promise<void> {
-		throw new Error("Method not implemented.")
+	public async resumeTask(taskId: string): Promise<void> {
+		const task = await this.sidebarProvider.getTaskWithId(taskId)
+		if (!task || !task.historyItem) {
+			throw new Error(`Task with ID ${taskId} not found or has no history item.`)
+		}
+		await this.sidebarProvider.initClineWithHistoryItem(task.historyItem)
+		// No explicit response needed, events will signal task state changes
 	}
 
-	public async isTaskInHistory(_taskId: string): Promise<boolean> {
-		throw new Error("Method not implemented.")
+	public async isTaskInHistory(taskId: string): Promise<boolean> {
+		const task = await this.sidebarProvider.getTaskWithId(taskId)
+		const result = !!task
+		// Send response back to the specific client who asked
+		// Need clientId from the original TaskCommand for this - assuming it's passed somehow or using a default
+		const requestingClientId = "unknown" // Placeholder - This needs the actual client ID
+		this.sendResponse(requestingClientId, TaskCommandName.IsTaskInHistory, result)
+		return result
 	}
 
 	public getCurrentTaskStack(): string[] {
-		throw new Error("Method not implemented.")
+		const stack = this.sidebarProvider.getCurrentTaskStack()
+		const requestingClientId = this.ipc?.getFirstClientId() || "current" // Use first client as default context
+		this.sendResponse(requestingClientId, TaskCommandName.GetCurrentTaskStack, stack)
+		return stack
 	}
 
-	public async clearCurrentTask(_lastMessage?: string): Promise<void> {
-		throw new Error("Method not implemented.")
-	}
-
-	public async cancelCurrentTask(): Promise<void> {
-		throw new Error("Method not implemented.")
-	}
-
-	public async cancelTask(taskId: string): Promise<void> {
-		const provider = this.taskMap.get(taskId)
-		if (provider) {
-			await provider.cancelTask()
-			this.taskMap.delete(taskId)
+	public async clearCurrentTask(lastMessage?: string): Promise<void> {
+		const currentCline = this.sidebarProvider.getCurrentCline()
+		if (currentCline) {
+			// const taskId = currentCline.taskId; // taskId not needed for response
+			await this.sidebarProvider.removeClineFromStack()
+			// No explicit response needed, UI should update based on task stack changes
+			if (lastMessage) {
+				this.log(`[API] clearCurrentTask called with lastMessage: ${lastMessage}.`)
+			}
 		}
 	}
 
-	public async sendMessage(_message?: string, _images?: string[]): Promise<void> {
-		throw new Error("Method not implemented.")
+	public async cancelCurrentTask(): Promise<void> {
+		const currentCline = this.sidebarProvider.getCurrentCline()
+		if (currentCline) {
+			await this.sidebarProvider.cancelTask()
+			// No explicit response needed, TaskAborted event will be emitted
+		}
+	}
+
+	public async cancelTask(taskId: string): Promise<void> {
+		const currentCline = this.sidebarProvider.getCurrentCline()
+		if (currentCline?.taskId === taskId) {
+			await this.sidebarProvider.cancelTask()
+		} else {
+			// Attempt to find and abort a non-current task if tracked by API (e.g., via taskMap if it exists and stores Clines)
+			// For now, only supporting cancellation of the current task via this API endpoint.
+			this.log(
+				`[API] cancelTask called for non-current task ${taskId}. Only current task cancellation is supported directly.`,
+			)
+			throw new Error(`Task ${taskId} is not the current active task. Cannot cancel.`)
+		}
+		// No explicit response needed, TaskAborted event will be emitted
+	}
+
+	// --- User Interaction ---
+	public async sendMessage(message?: string, images?: string[]): Promise<void> {
+		const currentCline = this.sidebarProvider.getCurrentCline()
+		if (!currentCline) {
+			throw new Error("No active task to send message to.")
+		}
+		// Simulate webview response 'messageResponse' when sending a message
+		await currentCline.handleWebviewAskResponse("messageResponse", message, images)
 	}
 
 	public async pressPrimaryButton(): Promise<void> {
-		throw new Error("Method not implemented.")
+		const currentCline = this.sidebarProvider.getCurrentCline()
+		if (!currentCline) {
+			throw new Error("No active task to press primary button on.")
+		}
+		// Simulate webview response 'yesButtonClicked'
+		await currentCline.handleWebviewAskResponse("yesButtonClicked")
 	}
 
 	public async pressSecondaryButton(): Promise<void> {
-		throw new Error("Method not implemented.")
+		const currentCline = this.sidebarProvider.getCurrentCline()
+		if (!currentCline) {
+			throw new Error("No active task to press secondary button on.")
+		}
+		// Simulate webview response 'noButtonClicked'
+		await currentCline.handleWebviewAskResponse("noButtonClicked")
 	}
 
+	// --- Configuration & Profiles ---
 	public getConfiguration(): RooCodeSettings {
-		throw new Error("Method not implemented.")
+		const globalState = this.sidebarProvider.contextProxy.getValues()
+		const providerSettings = this.sidebarProvider.contextProxy.getProviderSettings()
+		const config = { ...globalState, ...providerSettings } as RooCodeSettings
+		const requestingClientId = this.ipc?.getFirstClientId() || "config"
+		this.sendResponse(requestingClientId, TaskCommandName.GetConfiguration, config)
+		return config
 	}
 
-	public async setConfiguration(_values: RooCodeSettings): Promise<void> {
-		throw new Error("Method not implemented.")
+	public async setConfiguration(values: RooCodeSettings): Promise<void> {
+		await this.sidebarProvider.updateApiConfiguration(values)
+		const requestingClientId = this.ipc?.getFirstClientId() || "config"
+		this.sendResponse(requestingClientId, TaskCommandName.SetConfiguration, true) // Acknowledge success
 	}
 
-	public async createProfile(_name: string): Promise<string> {
-		throw new Error("Method not implemented.")
+	public async createProfile(name: string): Promise<string> {
+		const config = this.getConfiguration() // Gets current config synchronously
+		config.listApiConfigMeta = config.listApiConfigMeta || []
+		// Check if profile already exists
+		if (config.listApiConfigMeta.some((p) => p.name === name)) {
+			throw new Error(`Profile with name "${name}" already exists.`)
+		}
+		config.listApiConfigMeta.push({ id: crypto.randomUUID(), name }) // Use UUID for ID
+		await this.sidebarProvider.updateApiConfiguration(config) // This saves the updated list
+		const requestingClientId = this.ipc?.getFirstClientId() || "profiles"
+		this.sendResponse(requestingClientId, TaskCommandName.CreateProfile, name) // Respond with the created profile name
+		return name
 	}
 
 	public getProfiles(): string[] {
-		throw new Error("Method not implemented.")
-	}
-
-	public async setActiveProfile(_name: string): Promise<void> {
-		throw new Error("Method not implemented.")
+		const config = this.getConfiguration()
+		const profiles = (config.listApiConfigMeta || []).map((profile) => profile.name)
+		const requestingClientId = this.ipc?.getFirstClientId() || "profiles"
+		this.sendResponse(requestingClientId, TaskCommandName.GetProfiles, profiles)
+		return profiles
 	}
 
 	public getActiveProfile(): string | undefined {
-		throw new Error("Method not implemented.")
+		const config = this.getConfiguration()
+		const activeProfile = config.currentApiConfigName
+		const requestingClientId = this.ipc?.getFirstClientId() || "activeProfile"
+		this.sendResponse(requestingClientId, TaskCommandName.GetActiveProfile, activeProfile)
+		return activeProfile
 	}
 
-	public async deleteProfile(_name: string): Promise<void> {
-		throw new Error("Method not implemented.")
+	public async setActiveProfile(name: string): Promise<void> {
+		const config = this.getConfiguration()
+		// Verify profile exists
+		if (!(config.listApiConfigMeta || []).some((p) => p.name === name)) {
+			throw new Error(`Profile with name "${name}" not found.`)
+		}
+		config.currentApiConfigName = name
+		await this.sidebarProvider.updateApiConfiguration(config)
+		const requestingClientId = this.ipc?.getFirstClientId() || "profiles"
+		this.sendResponse(requestingClientId, TaskCommandName.SetActiveProfile, true) // Acknowledge success
 	}
 
+	public async deleteProfile(name: string): Promise<void> {
+		const config = this.getConfiguration()
+		const initialLength = (config.listApiConfigMeta || []).length
+		config.listApiConfigMeta = (config.listApiConfigMeta || []).filter((p) => p.name !== name)
+		if (config.listApiConfigMeta.length === initialLength) {
+			throw new Error(`Profile with name "${name}" not found.`)
+		}
+		// If deleting the active profile, reset to default or first available
+		if (config.currentApiConfigName === name) {
+			config.currentApiConfigName = config.listApiConfigMeta?.[0]?.name || "default"
+		}
+		await this.sidebarProvider.updateApiConfiguration(config)
+		const requestingClientId = this.ipc?.getFirstClientId() || "profiles"
+		this.sendResponse(requestingClientId, TaskCommandName.DeleteProfile, true) // Acknowledge success
+	}
+
+	// --- Status ---
 	public isReady(): boolean {
-		throw new Error("Method not implemented.")
+		const ready = this.sidebarProvider.isViewLaunched
+		const requestingClientId = this.ipc?.getFirstClientId() || "status"
+		this.sendResponse(requestingClientId, TaskCommandName.IsReady, ready)
+		return ready
 	}
-}
+} // Ensure class closing brace is present

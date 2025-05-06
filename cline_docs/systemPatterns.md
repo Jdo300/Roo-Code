@@ -22,6 +22,7 @@
     ```
 
 4. Event Pattern
+
     ```typescript
     server.emit(event) -> server.send(TaskEvent) -> client._handleMessage() -> client.emit(event)
     ```

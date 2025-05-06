@@ -43,7 +43,7 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 	public listen() {
 		this._isListening = true
 
-		ipc.config.silent = true
+		ipc.config.silent = false // Enable IPC logging
 
 		const serverCallback = () => {
 			this._log("[RPC Server] Initializing event handlers...")
@@ -163,5 +163,12 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 
 	public get isListening() {
 		return this._isListening
+	}
+
+	public getFirstClientId(): string | undefined {
+		if (this._clients.size > 0) {
+			return this._clients.keys().next().value
+		}
+		return undefined
 	}
 }

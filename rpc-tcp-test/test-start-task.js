@@ -1,52 +1,72 @@
 import RooCodeClient from "./test-node-client.js"
 
 async function testStartTask() {
+	console.log("Starting RPC test client...")
 	const client = new RooCodeClient()
 
 	try {
 		// Set up event handlers according to API schema
+		console.log("Setting up event handlers...")
+
 		client.on("connect", (data) => {
-			console.log("Event: Connected:", data)
+			console.log("Event: Connected with data:", JSON.stringify(data, null, 2))
 		})
 
 		client.on("disconnect", () => {
-			console.log("Event: Disconnected")
+			console.log("Event: Disconnected from server")
 		})
 
 		client.on("error", (error) => {
-			console.error("Event: Error:", error)
+			console.error("Event: Error occurred:", error)
 		})
 
-		await client.connect()
-		console.log("Connected to server")
+		console.log("Attempting to connect to server...")
 
-		// Use complete configuration for Gemini provider
-		const testConfig = {
-			apiProvider: "gemini",
-			currentApiConfigName: "gemini",
-			autoApprovalEnabled: true,
-			alwaysAllowReadOnly: true,
-			alwaysAllowWrite: true,
-			alwaysAllowBrowser: true,
-			alwaysAllowExecute: true,
-			__type__: "RooCodeSettings",
-			geminiApiKey: process.env.GEMINI_API_KEY,
-			telemetrySetting: "disabled",
-			promptCachingEnabled: true,
-			diffEnabled: true,
-			fuzzyMatchThreshold: 0.8,
-			modelTemperature: 0.7,
-			rateLimitSeconds: 0,
-			includeMaxTokens: true,
-			reasoningEffort: "high",
+		// Wait for successful connection and Ack
+		await new Promise((resolve, reject) => {
+			const connectionTimeout = setTimeout(() => {
+				reject(new Error("Connection timeout waiting for Ack"))
+			}, 5000)
+
+			client.once("connect", (data) => {
+				console.log("Successfully connected and received Ack:", data)
+				clearTimeout(connectionTimeout)
+				resolve()
+			})
+
+			client.connect().catch(reject)
+		})
+
+		// Get the default profile
+		console.log("\nStep 1: Getting profiles...")
+		try {
+			console.log("Sending GetProfiles command...")
+			const profiles = await client.getProfiles()
+			console.log("Available profiles:", JSON.stringify(profiles, null, 2))
+
+			const activeProfile = await client.getActiveProfile()
+			console.log("Active profile:", JSON.stringify(activeProfile, null, 2))
+		} catch (error) {
+			console.error("Failed to get profiles:", error.message)
+			throw error
+		}
+
+		// Get current configuration from the profile
+		console.log("\nStep 2: Getting configuration...")
+		let config
+		try {
+			config = await client.getConfiguration()
+			console.log("Current configuration:", JSON.stringify(config, null, 2))
+		} catch (error) {
+			console.error("Failed to get configuration:", error.message)
+			throw error
 		}
 
 		console.log("\nTesting StartNewTask command...")
-		console.log("Configuration:", testConfig)
 		console.log("Text:", "Test task from Node.js client")
 
 		try {
-			const taskId = await client.startNewTask("Test task from Node.js client", testConfig)
+			const taskId = await client.startNewTask("Test task from Node.js client", config)
 			console.log("Success! Task created with ID:", taskId)
 
 			// Wait for task completion or timeout

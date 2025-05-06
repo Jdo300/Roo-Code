@@ -60,7 +60,7 @@ class RooCodeClient extends EventEmitter {
 	constructor() {
 		super()
 		this.buffer = ""
-		this.clientId = Math.random().toString(36).substring(2)
+		this.clientId = null // Initialize clientId as null
 		this.pendingRequests = new Map()
 	}
 
@@ -80,9 +80,24 @@ class RooCodeClient extends EventEmitter {
 
 	_handleMessage(parsedMsg) {
 		try {
+			console.log("[RPC Client] Handling message of type:", parsedMsg.type)
+
 			if (parsedMsg.type === RooCodeClient.IpcMessageType.Ack) {
+				this.clientId = parsedMsg.data.clientId // Store the server-assigned clientId
+				console.log("[RPC Client] Received server-assigned clientId:", this.clientId)
+
+				// If there's a pending request using the clientId, update it
+				if (this.pendingRequests.has(this.clientId)) {
+					console.log("[RPC Client] Found pending request for clientId:", this.clientId)
+					const request = this.pendingRequests.get(this.clientId)
+					clearTimeout(request.timeout)
+					this.pendingRequests.delete(this.clientId)
+					request.resolve(parsedMsg.data)
+				}
+
 				this.emit("connect", parsedMsg.data)
 			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TaskEvent) {
+				console.log("[RPC Client] Received TaskEvent:", parsedMsg.data)
 				const { eventName, payload } = parsedMsg.data
 
 				// Validate event payloads
@@ -121,14 +136,23 @@ class RooCodeClient extends EventEmitter {
 				}
 
 				this.emit(eventName, payload)
-			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TaskResponse) {
-				if (parsedMsg.clientId && this.pendingRequests.has(parsedMsg.clientId)) {
-					const request = this.pendingRequests.get(parsedMsg.clientId)
+			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TaskEvent) {
+				console.log("[RPC Client] Received TaskEvent:", parsedMsg)
+				const { eventName, payload } = parsedMsg.data
+
+				// Check if this is a response to a command
+				if (this.pendingRequests.has(this.clientId)) {
+					console.log("[RPC Client] Found pending request, resolving with payload:", payload)
+					const request = this.pendingRequests.get(this.clientId)
 					clearTimeout(request.timeout)
-					this.pendingRequests.delete(parsedMsg.clientId)
-					request.resolve(parsedMsg.data)
+					this.pendingRequests.delete(this.clientId)
+					request.resolve(payload)
 				}
+
+				// Also emit the event for event listeners
+				this.emit(eventName, payload)
 			} else {
+				console.error("[RPC Client] Unknown message type:", parsedMsg.type)
 				this.emit("error", `Unknown message type: ${parsedMsg.type}`)
 			}
 		} catch (error) {
@@ -142,8 +166,6 @@ class RooCodeClient extends EventEmitter {
 		Ack: "Ack",
 		TaskCommand: "TaskCommand",
 		TaskEvent: "TaskEvent",
-		TaskResponse: "TaskResponse",
-		EvalEvent: "EvalEvent",
 	}
 
 	static IpcOrigin = {
@@ -175,24 +197,30 @@ class RooCodeClient extends EventEmitter {
 		DELETE_PROFILE: "DeleteProfile",
 	}
 
-	_sendCommand(commandName, commandData = {}) {
+	_sendCommand(commandName, commandData) {
 		return new Promise((resolve, reject) => {
+			if (!this.clientId) {
+				reject(new Error("Client ID not yet assigned by server. Wait for 'connect' event."))
+				return
+			}
 			const socket = ipc.of["roo-tcp-server"]
 			if (!socket) {
 				reject(new Error("Not connected to server"))
 				return
 			}
 
-			// Create message object according to schema
+			// Create message object according to schema using the server-assigned clientId
 			const message = {
 				type: RooCodeClient.IpcMessageType.TaskCommand,
 				origin: RooCodeClient.IpcOrigin.Client,
-				clientId: this.clientId,
+				clientId: this.clientId, // Use the server-assigned clientId
 				data: {
 					commandName: commandName,
-					data: commandData,
+					data: commandData === undefined ? undefined : commandData,
 				},
 			}
+
+			console.log("[RPC Client] Sending message:", message)
 
 			// Store the pending request with 60s timeout
 			const timeoutId = setTimeout(() => {
@@ -218,33 +246,71 @@ class RooCodeClient extends EventEmitter {
 
 			console.log(`Attempting to connect to ${host}:${port}...`)
 
-			const timeout = setTimeout(() => {
-				reject(new Error("Connection timeout after 5s"))
-			}, 5000)
+			let connectionTimeout = setTimeout(() => {
+				reject(new Error("Connection timeout after 10s"))
+			}, 10000) // Increase timeout to 10s
+
+			// Create a promise that resolves when we get the Ack
+			const ackPromise = new Promise((resolveAck) => {
+				this.once("connect", (data) => {
+					console.log("[RPC Client] Received server Ack:", data)
+					resolveAck(data)
+				})
+			})
 
 			try {
 				// Configure IPC
 				ipc.config.id = "test-node-client"
-				ipc.config.retry = 1500
-				ipc.config.maxRetries = 3
+				ipc.config.retry = 3000 // Increase retry delay
+				ipc.config.maxRetries = 5 // Increase max retries
 				ipc.config.silent = false
 				ipc.config.sync = false
 				ipc.config.unlink = false
 				ipc.config.appspace = ""
 				ipc.config.socketRoot = ""
-				ipc.config.stopRetrying = true
+				ipc.config.stopRetrying = false // Keep trying to connect
+				ipc.config.logger = console.log // Enable detailed logging
+
+				console.log("[RPC Client] Configuring IPC with:", {
+					id: ipc.config.id,
+					retry: ipc.config.retry,
+					maxRetries: ipc.config.maxRetries,
+					silent: ipc.config.silent,
+					stopRetrying: ipc.config.stopRetrying,
+				})
+
+				// Connect using TCP
+				console.log(`[RPC Client] Attempting to connect to ${host}:${port}...`)
 
 				// Connect using TCP
 				ipc.connectToNet("roo-tcp-server", host, port, () => {
 					if (!ipc.of["roo-tcp-server"]) {
+						console.error("[RPC Client] Failed to establish connection - socket not created")
 						clearTimeout(timeout)
 						reject(new Error("Failed to establish connection"))
 						return
 					}
 
 					const socket = ipc.of["roo-tcp-server"]
+					console.log("[RPC Client] Socket created successfully")
+
+					socket.on("connect", () => {
+						console.log("[RPC Client] Socket connected event received")
+					})
+
+					socket.on("connect_error", (error) => {
+						console.error("[RPC Client] Socket connection error:", error)
+					})
+
+					socket.on("connect_timeout", () => {
+						console.error("[RPC Client] Socket connection timeout")
+					})
 
 					socket.on("message", (data) => {
+						console.log(
+							"[RPC Client] Received message:",
+							typeof data === "string" ? "string data" : "object data",
+						)
 						if (typeof data === "string") {
 							this.buffer += data
 							this._processBuffer()
@@ -254,17 +320,22 @@ class RooCodeClient extends EventEmitter {
 					})
 
 					socket.on("error", (err) => {
-						console.error("Connection error:", err)
+						console.error("[RPC Client] Connection error:", err)
 						this.emit("error", err)
 					})
 
 					socket.on("disconnect", () => {
-						console.log("Disconnected from server")
+						console.log("[RPC Client] Disconnected from server")
 						this.emit("disconnect")
 					})
 
-					console.log("Initiating connection...")
-					resolve()
+					console.log("[RPC Client] All event handlers registered")
+
+					// Wait for both socket connection and Ack message
+					ackPromise.then((ackData) => {
+						clearTimeout(connectionTimeout)
+						resolve(ackData)
+					})
 				})
 			} catch (error) {
 				clearTimeout(timeout)
@@ -278,7 +349,7 @@ class RooCodeClient extends EventEmitter {
 	}
 
 	async getConfiguration() {
-		return this._sendCommand(RooCodeClient.TaskCommandName.GET_CONFIGURATION, {})
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_CONFIGURATION)
 	}
 
 	async setConfiguration(settings) {
@@ -310,7 +381,7 @@ class RooCodeClient extends EventEmitter {
 	}
 
 	async getCurrentTaskStack() {
-		return this._sendCommand(RooCodeClient.TaskCommandName.GET_CURRENT_TASK_STACK, {})
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_CURRENT_TASK_STACK)
 	}
 
 	async getMessages(taskId) {
@@ -321,14 +392,6 @@ class RooCodeClient extends EventEmitter {
 		return this._sendCommand(RooCodeClient.TaskCommandName.GET_TOKEN_USAGE, taskId)
 	}
 
-	async isTaskInHistory(taskId) {
-		return this._sendCommand(RooCodeClient.TaskCommandName.IS_TASK_IN_HISTORY, taskId)
-	}
-
-	async getCurrentTaskStack() {
-		return this._sendCommand(RooCodeClient.TaskCommandName.GET_CURRENT_TASK_STACK, {})
-	}
-
 	async sendMessage(message, images = []) {
 		return this._sendCommand(RooCodeClient.TaskCommandName.SEND_MESSAGE, {
 			message,
@@ -337,11 +400,11 @@ class RooCodeClient extends EventEmitter {
 	}
 
 	async pressPrimaryButton() {
-		return this._sendCommand(RooCodeClient.TaskCommandName.PRESS_PRIMARY_BUTTON, {})
+		return this._sendCommand(RooCodeClient.TaskCommandName.PRESS_PRIMARY_BUTTON)
 	}
 
 	async pressSecondaryButton() {
-		return this._sendCommand(RooCodeClient.TaskCommandName.PRESS_SECONDARY_BUTTON, {})
+		return this._sendCommand(RooCodeClient.TaskCommandName.PRESS_SECONDARY_BUTTON)
 	}
 
 	async log(message) {
@@ -353,7 +416,7 @@ class RooCodeClient extends EventEmitter {
 	}
 
 	async getProfiles() {
-		return this._sendCommand(RooCodeClient.TaskCommandName.GET_PROFILES, {})
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_PROFILES)
 	}
 
 	async setActiveProfile(name) {
@@ -361,7 +424,7 @@ class RooCodeClient extends EventEmitter {
 	}
 
 	async getActiveProfile() {
-		return this._sendCommand(RooCodeClient.TaskCommandName.GET_ACTIVE_PROFILE, {})
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_ACTIVE_PROFILE)
 	}
 
 	async deleteProfile(name) {
@@ -495,5 +558,5 @@ main().catch((error) => {
 	process.exit(1)
 })
 
-// Export the client instance for potential manual interaction if needed
-// module.exports = { RooCodeClient }; // Not needed for this test approach
+// Export the RooCodeClient class
+export default RooCodeClient

@@ -1,6 +1,61 @@
 import { default as ipc } from "node-ipc"
 import { EventEmitter } from "events"
 
+// Message type definitions
+const MessageType = {
+	SAY: "say",
+	ASK: "ask",
+	THINKING: "thinking",
+	TOOL_START: "tool_start",
+	TOOL_END: "tool_end",
+	ERROR: "error",
+}
+
+const MessageAction = {
+	CREATED: "created",
+	UPDATED: "updated",
+}
+
+// Payload type definitions
+// Message validation schemas
+const validateClineMessage = (message) => {
+	const requiredFields = ["type", "text", "partial"]
+	const validTypes = Object.values(MessageType)
+
+	if (!message || typeof message !== "object") return false
+	if (!requiredFields.every((field) => field in message)) return false
+	if (!validTypes.includes(message.type)) return false
+	if (typeof message.text !== "string") return false
+	if (typeof message.partial !== "boolean") return false
+
+	return true
+}
+
+const validateTokenUsage = (usage) => {
+	const requiredFields = ["tokensIn", "tokensOut", "totalCost"]
+
+	if (!usage || typeof usage !== "object") return false
+	if (!requiredFields.every((field) => field in usage)) return false
+	if (typeof usage.tokensIn !== "number") return false
+	if (typeof usage.tokensOut !== "number") return false
+	if (typeof usage.totalCost !== "number") return false
+
+	return true
+}
+
+const validateToolUsage = (usage) => {
+	const requiredFields = ["toolName", "startTime", "endTime", "success"]
+
+	if (!usage || typeof usage !== "object") return false
+	if (!requiredFields.every((field) => field in usage)) return false
+	if (typeof usage.toolName !== "string") return false
+	if (typeof usage.startTime !== "number") return false
+	if (typeof usage.endTime !== "number") return false
+	if (typeof usage.success !== "boolean") return false
+
+	return true
+}
+
 class RooCodeClient extends EventEmitter {
 	constructor() {
 		super()
@@ -25,12 +80,48 @@ class RooCodeClient extends EventEmitter {
 
 	_handleMessage(parsedMsg) {
 		try {
-			if (parsedMsg.type === RooCodeClient.IpcMessageType.ACK) {
+			if (parsedMsg.type === RooCodeClient.IpcMessageType.Ack) {
 				this.emit("connect", parsedMsg.data)
-			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TASK_EVENT) {
+			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TaskEvent) {
 				const { eventName, payload } = parsedMsg.data
+
+				// Validate event payloads
+				if (eventName === "Message") {
+					if (!validateClineMessage(payload.message)) {
+						this.emit("error", `Invalid message format: ${JSON.stringify(payload.message)}`)
+						return
+					}
+					if (payload.action && !Object.values(MessageAction).includes(payload.action)) {
+						this.emit("error", `Invalid message action: ${payload.action}`)
+						return
+					}
+				} else if (eventName === "TaskCompleted") {
+					if (!validateTokenUsage(payload.tokenUsage)) {
+						this.emit("error", `Invalid token usage format: ${JSON.stringify(payload.tokenUsage)}`)
+						return
+					}
+					if (!validateToolUsage(payload.toolUsage)) {
+						this.emit("error", `Invalid tool usage format: ${JSON.stringify(payload.toolUsage)}`)
+						return
+					}
+				} else if (eventName === "TaskTokenUsageUpdated") {
+					if (!validateTokenUsage(payload.usage)) {
+						this.emit("error", `Invalid token usage format: ${JSON.stringify(payload.usage)}`)
+						return
+					}
+				} else if (eventName === "TaskToolFailed") {
+					if (!payload.toolName || typeof payload.toolName !== "string") {
+						this.emit("error", `Invalid tool name: ${payload.toolName}`)
+						return
+					}
+					if (!payload.error) {
+						this.emit("error", "Missing error details in TaskToolFailed event")
+						return
+					}
+				}
+
 				this.emit(eventName, payload)
-			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TASK_COMMAND) {
+			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TaskResponse) {
 				if (parsedMsg.clientId && this.pendingRequests.has(parsedMsg.clientId)) {
 					const request = this.pendingRequests.get(parsedMsg.clientId)
 					clearTimeout(request.timeout)
@@ -46,14 +137,18 @@ class RooCodeClient extends EventEmitter {
 	}
 
 	static IpcMessageType = {
-		ACK: "Ack",
-		TASK_COMMAND: "TaskCommand",
-		TASK_EVENT: "TaskEvent",
+		Connect: "Connect",
+		Disconnect: "Disconnect",
+		Ack: "Ack",
+		TaskCommand: "TaskCommand",
+		TaskEvent: "TaskEvent",
+		TaskResponse: "TaskResponse",
+		EvalEvent: "EvalEvent",
 	}
 
 	static IpcOrigin = {
-		CLIENT: "client",
-		SERVER: "server",
+		Client: "client",
+		Server: "server",
 	}
 
 	static TaskCommandName = {
@@ -90,8 +185,8 @@ class RooCodeClient extends EventEmitter {
 
 			// Create message object according to schema
 			const message = {
-				type: RooCodeClient.IpcMessageType.TASK_COMMAND,
-				origin: RooCodeClient.IpcOrigin.CLIENT,
+				type: RooCodeClient.IpcMessageType.TaskCommand,
+				origin: RooCodeClient.IpcOrigin.Client,
 				clientId: this.clientId,
 				data: {
 					commandName: commandName,
@@ -110,7 +205,7 @@ class RooCodeClient extends EventEmitter {
 				timeout: timeoutId,
 			})
 
-			console.log("[TcpTransport#send] Sending data:", JSON.stringify(message))
+			console.log("[RPC Client] Sending command:", commandName, "with data:", JSON.stringify(commandData))
 
 			socket.emit("message", message)
 		})
@@ -204,6 +299,26 @@ class RooCodeClient extends EventEmitter {
 			newTab: options.newTab || false,
 		}
 		return this._sendCommand(RooCodeClient.TaskCommandName.START_NEW_TASK, data)
+	}
+
+	async resumeTask(taskId) {
+		return this._sendCommand(RooCodeClient.TaskCommandName.RESUME_TASK, taskId)
+	}
+
+	async isTaskInHistory(taskId) {
+		return this._sendCommand(RooCodeClient.TaskCommandName.IS_TASK_IN_HISTORY, taskId)
+	}
+
+	async getCurrentTaskStack() {
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_CURRENT_TASK_STACK, {})
+	}
+
+	async getMessages(taskId) {
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_MESSAGES, taskId)
+	}
+
+	async getTokenUsage(taskId) {
+		return this._sendCommand(RooCodeClient.TaskCommandName.GET_TOKEN_USAGE, taskId)
 	}
 
 	async isTaskInHistory(taskId) {
@@ -302,10 +417,10 @@ class RooCodeClient extends EventEmitter {
 async function main() {
 	const client = new RooCodeClient()
 
+	// Connection events
 	client.on("connect", (data) => {
 		console.log("Event: Connected:", data)
 		console.log("Client is connected and ready to send messages.")
-		// Keep the client connected, waiting for manual trigger to send message
 	})
 
 	client.on("disconnect", () => {
@@ -316,15 +431,53 @@ async function main() {
 		console.error("Event: Error:", error)
 	})
 
-	// Add other event listeners if needed for debugging server responses
+	// Task lifecycle events
 	client.on("Message", (data) => {
 		console.log("Event: Message:", data)
 	})
 
-	client.on("TaskCompleted", (data) => {
-		console.log("Event: TaskCompleted:", data)
-		// Optionally disconnect after task completion if desired
-		// client.disconnect();
+	client.on("TaskCreated", (taskId) => {
+		console.log("Event: TaskCreated:", taskId)
+	})
+
+	client.on("TaskStarted", (taskId) => {
+		console.log("Event: TaskStarted:", taskId)
+	})
+
+	client.on("TaskModeSwitched", (taskId, modeSlug) => {
+		console.log("Event: TaskModeSwitched:", { taskId, modeSlug })
+	})
+
+	client.on("TaskPaused", (taskId) => {
+		console.log("Event: TaskPaused:", taskId)
+	})
+
+	client.on("TaskUnpaused", (taskId) => {
+		console.log("Event: TaskUnpaused:", taskId)
+	})
+
+	client.on("TaskAskResponded", (taskId) => {
+		console.log("Event: TaskAskResponded:", taskId)
+	})
+
+	client.on("TaskAborted", (taskId) => {
+		console.log("Event: TaskAborted:", taskId)
+	})
+
+	client.on("TaskSpawned", (taskId, childTaskId) => {
+		console.log("Event: TaskSpawned:", { taskId, childTaskId })
+	})
+
+	client.on("TaskCompleted", (taskId, tokenUsage, toolUsage) => {
+		console.log("Event: TaskCompleted:", { taskId, tokenUsage, toolUsage })
+	})
+
+	client.on("TaskTokenUsageUpdated", (taskId, usage) => {
+		console.log("Event: TaskTokenUsageUpdated:", { taskId, usage })
+	})
+
+	client.on("TaskToolFailed", (taskId, toolName, error) => {
+		console.log("Event: TaskToolFailed:", { taskId, toolName, error })
 	})
 
 	try {

@@ -20,7 +20,7 @@ async function testStartTask() {
 		await client.connect()
 		console.log("Connected to server")
 
-		// Skip getting configuration, use minimal config with Gemini provider
+		// Use complete configuration for Gemini provider
 		const testConfig = {
 			apiProvider: "gemini",
 			currentApiConfigName: "gemini",
@@ -30,6 +30,15 @@ async function testStartTask() {
 			alwaysAllowBrowser: true,
 			alwaysAllowExecute: true,
 			__type__: "RooCodeSettings",
+			geminiApiKey: process.env.GEMINI_API_KEY,
+			telemetrySetting: "disabled",
+			promptCachingEnabled: true,
+			diffEnabled: true,
+			fuzzyMatchThreshold: 0.8,
+			modelTemperature: 0.7,
+			rateLimitSeconds: 0,
+			includeMaxTokens: true,
+			reasoningEffort: "high",
 		}
 
 		console.log("\nTesting StartNewTask command...")

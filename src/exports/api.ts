@@ -6,7 +6,7 @@ import * as path from "path"
 import { getWorkspacePath } from "../utils/path"
 import { ClineProvider } from "../core/webview/ClineProvider"
 import { RooCodeSettings, RooCodeEvents, RooCodeEventName } from "../schemas"
-import { IpcMessageType, IpcOrigin, TaskCommandName } from "../schemas/ipc"
+import { IpcMessageType, IpcOrigin, TaskCommandName, TaskCommand } from "../schemas/ipc"
 import { getApiMetrics } from "../shared/getApiMetrics"
 
 import { RooCodeAPI } from "./interface"
@@ -80,26 +80,26 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		}
 	}
 
-	public getMessages(taskId: string): void {
+	public getMessages(taskId: string, clientId: string): void {
 		const provider = this.taskMap.get(taskId)
 		if (provider) {
-			this.sendResponse(taskId, TaskCommandName.GetMessages, provider.messages || [])
+			this.sendResponse(clientId, TaskCommandName.GetMessages, provider.messages || [])
 		} else {
-			this.sendResponse(taskId, TaskCommandName.GetMessages, [])
+			this.sendResponse(clientId, TaskCommandName.GetMessages, [])
 		}
 	}
 
-	public getTokenUsage(taskId: string): void {
+	public getTokenUsage(taskId: string, clientId: string): void {
 		const provider = this.taskMap.get(taskId)
 		if (provider) {
 			const cline = provider.getCurrentCline()
 			if (cline) {
-				this.sendResponse(taskId, TaskCommandName.GetTokenUsage, getApiMetrics(cline.clineMessages))
+				this.sendResponse(clientId, TaskCommandName.GetTokenUsage, getApiMetrics(cline.clineMessages))
 			} else {
-				this.sendResponse(taskId, TaskCommandName.GetTokenUsage, undefined)
+				this.sendResponse(clientId, TaskCommandName.GetTokenUsage, undefined)
 			}
 		} else {
-			this.sendResponse(taskId, TaskCommandName.GetTokenUsage, undefined)
+			this.sendResponse(clientId, TaskCommandName.GetTokenUsage, undefined)
 		}
 	}
 
@@ -129,9 +129,11 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	}
 
 	private registerListeners(provider: ClineProvider): void {
+		// Listen for events from the ClineProvider
 		provider.on("clineCreated", (cline) => {
 			cline.on("taskStarted", async () => {
 				this.emit(RooCodeEventName.TaskStarted, cline.taskId)
+				// Store the ClineProvider instance associated with this task ID
 				this.taskMap.set(cline.taskId, provider)
 				await this.fileLog(`[${new Date().toISOString()}] taskStarted -> ${cline.taskId}\n`)
 			})
@@ -190,6 +192,117 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 
 			this.emit(RooCodeEventName.TaskCreated, cline.taskId)
 		})
+
+		// Listen for TaskCommand messages from the IPC server
+		if (this.ipc) {
+			this.ipc.on(IpcMessageType.TaskCommand, async (clientId, command) => {
+				this.log(`[API] Received TaskCommand from client ${clientId}: ${command.commandName}`)
+				try {
+					// Call the corresponding API method based on commandName
+					// Pass clientId to methods that need to send a response back to the specific client
+					switch (command.commandName) {
+						case TaskCommandName.StartNewTask:
+							await this.startNewTask({
+								...command.data,
+								clientId,
+							})
+							break
+						case TaskCommandName.CancelTask:
+							await this.cancelTask(command.data, clientId)
+							// Response handled by TaskAborted event
+							break
+						case TaskCommandName.CloseTask:
+							const currentCline = this.sidebarProvider.getCurrentCline()
+							if (currentCline?.taskId === command.data) {
+								await this.clearCurrentTask(undefined, clientId)
+								// Response handled by UI update based on task stack changes
+							} else {
+								this.log(
+									`[API] CloseTask called for non-current task ${command.data}. Only current task close is supported directly.`,
+								)
+								this.sendResponse(clientId, command.commandName, {
+									error: `Task ${command.data} is not the current active task. Cannot close.`,
+								})
+							}
+							break
+						case TaskCommandName.GetCurrentTaskStack:
+							this.getCurrentTaskStack(clientId)
+							break
+						case TaskCommandName.ClearCurrentTask:
+							await this.clearCurrentTask(command.data, clientId)
+							break
+						case TaskCommandName.CancelCurrentTask:
+							await this.cancelCurrentTask(clientId)
+							break
+						case TaskCommandName.SendMessage:
+							await this.sendMessage(command.data.message, command.data.images, clientId)
+							break
+						case TaskCommandName.PressPrimaryButton:
+							await this.pressPrimaryButton(clientId)
+							break
+						case TaskCommandName.PressSecondaryButton:
+							await this.pressSecondaryButton(clientId)
+							break
+						case TaskCommandName.SetConfiguration:
+							await this.setConfiguration(command.data, clientId)
+							break
+						case TaskCommandName.GetConfiguration:
+							// This method now takes clientId to send response
+							this.getConfiguration(clientId)
+							break
+						case TaskCommandName.IsReady:
+							// This method now takes clientId to send response
+							this.isReady(clientId)
+							break
+						case TaskCommandName.GetMessages:
+							this.getMessages(command.data, clientId)
+							break
+						case TaskCommandName.GetTokenUsage:
+							this.getTokenUsage(command.data, clientId)
+							break
+						case TaskCommandName.Log:
+							this.log(`[Client Log] ${command.data}`)
+							// No response expected for Log command
+							break
+						case TaskCommandName.ResumeTask:
+							await this.resumeTask(command.data, clientId)
+							break
+						case TaskCommandName.IsTaskInHistory:
+							// This method now takes clientId to send response
+							this.isTaskInHistory(command.data, clientId)
+							break
+						case TaskCommandName.CreateProfile:
+							await this.createProfile(command.data, clientId)
+							break
+						case TaskCommandName.GetProfiles:
+							this.getProfiles(clientId)
+							break
+						case TaskCommandName.SetActiveProfile:
+							await this.setActiveProfile(command.data, clientId)
+							break
+						case TaskCommandName.GetActiveProfile:
+							this.getActiveProfile(clientId)
+							break
+						case TaskCommandName.DeleteProfile:
+							await this.deleteProfile(command.data, clientId)
+							break
+						default:
+							const unknownCommand = command as TaskCommand
+							this.log(`[API] Received unknown TaskCommand: ${unknownCommand.commandName}`)
+							this.sendResponse(clientId, unknownCommand.commandName, {
+								error: `Unknown command: ${unknownCommand.commandName}`,
+							})
+							break
+					}
+				} catch (error) {
+					this.log(`[API] Error processing TaskCommand ${command.commandName}: ${error}`)
+					// Send an error response back to the client
+					this.sendResponse(clientId, command.commandName, {
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			})
+		}
 	}
 
 	// --- Task Management ---
@@ -198,127 +311,125 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		text,
 		images,
 		newTab: _newTab, // Rename in destructuring, ignoring _newTab
+		clientId,
 	}: {
 		configuration?: RooCodeSettings
 		text?: string
 		images?: string[]
 		newTab?: boolean
+		clientId: string
 	}): Promise<string> {
 		if (configuration) {
 			await this.sidebarProvider.updateApiConfiguration(configuration)
 		}
 		const cline = await this.sidebarProvider.initClineWithTask(text, images)
-		// No explicit response needed here, TaskCreated event will be emitted by ClineProvider listener
+		this.sendResponse(clientId, TaskCommandName.StartNewTask, cline.taskId)
 		return cline.taskId
 	}
 
-	public async resumeTask(taskId: string): Promise<void> {
+	public async resumeTask(taskId: string, clientId: string): Promise<void> {
 		const task = await this.sidebarProvider.getTaskWithId(taskId)
 		if (!task || !task.historyItem) {
 			throw new Error(`Task with ID ${taskId} not found or has no history item.`)
 		}
 		await this.sidebarProvider.initClineWithHistoryItem(task.historyItem)
-		// No explicit response needed, events will signal task state changes
+		this.sendResponse(clientId, TaskCommandName.ResumeTask, true)
 	}
 
-	public async isTaskInHistory(taskId: string): Promise<boolean> {
+	public async isTaskInHistory(taskId: string, clientId: string): Promise<boolean> {
 		const task = await this.sidebarProvider.getTaskWithId(taskId)
 		const result = !!task
 		// Send response back to the specific client who asked
-		// Need clientId from the original TaskCommand for this - assuming it's passed somehow or using a default
-		const requestingClientId = "unknown" // Placeholder - This needs the actual client ID
-		this.sendResponse(requestingClientId, TaskCommandName.IsTaskInHistory, result)
+		this.sendResponse(clientId, TaskCommandName.IsTaskInHistory, result)
 		return result
 	}
 
-	public getCurrentTaskStack(): string[] {
+	public getCurrentTaskStack(clientId: string): string[] {
 		const stack = this.sidebarProvider.getCurrentTaskStack()
-		const requestingClientId = this.ipc?.getFirstClientId() || "current" // Use first client as default context
-		this.sendResponse(requestingClientId, TaskCommandName.GetCurrentTaskStack, stack)
+		this.sendResponse(clientId, TaskCommandName.GetCurrentTaskStack, stack)
 		return stack
 	}
 
-	public async clearCurrentTask(lastMessage?: string): Promise<void> {
+	public async clearCurrentTask(lastMessage: string | undefined, clientId: string): Promise<void> {
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (currentCline) {
-			// const taskId = currentCline.taskId; // taskId not needed for response
 			await this.sidebarProvider.removeClineFromStack()
-			// No explicit response needed, UI should update based on task stack changes
 			if (lastMessage) {
 				this.log(`[API] clearCurrentTask called with lastMessage: ${lastMessage}.`)
 			}
+			this.sendResponse(clientId, TaskCommandName.ClearCurrentTask, true)
 		}
 	}
 
-	public async cancelCurrentTask(): Promise<void> {
+	public async cancelCurrentTask(clientId: string): Promise<void> {
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (currentCline) {
 			await this.sidebarProvider.cancelTask()
-			// No explicit response needed, TaskAborted event will be emitted
+			this.sendResponse(clientId, TaskCommandName.CancelCurrentTask, true)
 		}
 	}
 
-	public async cancelTask(taskId: string): Promise<void> {
+	public async cancelTask(taskId: string, clientId: string): Promise<void> {
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (currentCline?.taskId === taskId) {
 			await this.sidebarProvider.cancelTask()
+			this.sendResponse(clientId, TaskCommandName.CancelTask, true)
 		} else {
-			// Attempt to find and abort a non-current task if tracked by API (e.g., via taskMap if it exists and stores Clines)
-			// For now, only supporting cancellation of the current task via this API endpoint.
 			this.log(
 				`[API] cancelTask called for non-current task ${taskId}. Only current task cancellation is supported directly.`,
 			)
 			throw new Error(`Task ${taskId} is not the current active task. Cannot cancel.`)
 		}
-		// No explicit response needed, TaskAborted event will be emitted
 	}
 
 	// --- User Interaction ---
-	public async sendMessage(message?: string, images?: string[]): Promise<void> {
+	public async sendMessage(
+		message: string | undefined,
+		images: string[] | undefined,
+		clientId: string,
+	): Promise<void> {
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (!currentCline) {
 			throw new Error("No active task to send message to.")
 		}
-		// Simulate webview response 'messageResponse' when sending a message
 		await currentCline.handleWebviewAskResponse("messageResponse", message, images)
+		this.sendResponse(clientId, TaskCommandName.SendMessage, true)
 	}
 
-	public async pressPrimaryButton(): Promise<void> {
+	public async pressPrimaryButton(clientId: string): Promise<void> {
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (!currentCline) {
 			throw new Error("No active task to press primary button on.")
 		}
-		// Simulate webview response 'yesButtonClicked'
 		await currentCline.handleWebviewAskResponse("yesButtonClicked")
+		this.sendResponse(clientId, TaskCommandName.PressPrimaryButton, true)
 	}
 
-	public async pressSecondaryButton(): Promise<void> {
+	public async pressSecondaryButton(clientId: string): Promise<void> {
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (!currentCline) {
 			throw new Error("No active task to press secondary button on.")
 		}
-		// Simulate webview response 'noButtonClicked'
 		await currentCline.handleWebviewAskResponse("noButtonClicked")
+		this.sendResponse(clientId, TaskCommandName.PressSecondaryButton, true)
 	}
 
 	// --- Configuration & Profiles ---
-	public getConfiguration(): RooCodeSettings {
+	public getConfiguration(clientId: string): RooCodeSettings {
 		const globalState = this.sidebarProvider.contextProxy.getValues()
 		const providerSettings = this.sidebarProvider.contextProxy.getProviderSettings()
 		const config = { ...globalState, ...providerSettings } as RooCodeSettings
-		const requestingClientId = this.ipc?.getFirstClientId() || "config"
-		this.sendResponse(requestingClientId, TaskCommandName.GetConfiguration, config)
+		this.sendResponse(clientId, TaskCommandName.GetConfiguration, config)
 		return config
 	}
 
-	public async setConfiguration(values: RooCodeSettings): Promise<void> {
+	public async setConfiguration(values: RooCodeSettings, clientId: string): Promise<void> {
 		await this.sidebarProvider.updateApiConfiguration(values)
-		const requestingClientId = this.ipc?.getFirstClientId() || "config"
-		this.sendResponse(requestingClientId, TaskCommandName.SetConfiguration, true) // Acknowledge success
+		this.sendResponse(clientId, TaskCommandName.SetConfiguration, true) // Acknowledge success
 	}
 
-	public async createProfile(name: string): Promise<string> {
-		const config = this.getConfiguration() // Gets current config synchronously
+	public async createProfile(name: string, clientId: string): Promise<string> {
+		const config = this.getConfiguration(clientId) // Pass clientId to getConfiguration
 		config.listApiConfigMeta = config.listApiConfigMeta || []
 		// Check if profile already exists
 		if (config.listApiConfigMeta.some((p) => p.name === name)) {
@@ -326,41 +437,37 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		}
 		config.listApiConfigMeta.push({ id: crypto.randomUUID(), name }) // Use UUID for ID
 		await this.sidebarProvider.updateApiConfiguration(config) // This saves the updated list
-		const requestingClientId = this.ipc?.getFirstClientId() || "profiles"
-		this.sendResponse(requestingClientId, TaskCommandName.CreateProfile, name) // Respond with the created profile name
+		this.sendResponse(clientId, TaskCommandName.CreateProfile, name) // Respond with the created profile name
 		return name
 	}
 
-	public getProfiles(): string[] {
-		const config = this.getConfiguration()
+	public getProfiles(clientId: string): string[] {
+		const config = this.getConfiguration(clientId) // Pass clientId to getConfiguration
 		const profiles = (config.listApiConfigMeta || []).map((profile) => profile.name)
-		const requestingClientId = this.ipc?.getFirstClientId() || "profiles"
-		this.sendResponse(requestingClientId, TaskCommandName.GetProfiles, profiles)
+		this.sendResponse(clientId, TaskCommandName.GetProfiles, profiles)
 		return profiles
 	}
 
-	public getActiveProfile(): string | undefined {
-		const config = this.getConfiguration()
+	public getActiveProfile(clientId: string): string | undefined {
+		const config = this.getConfiguration(clientId) // Pass clientId to getConfiguration
 		const activeProfile = config.currentApiConfigName
-		const requestingClientId = this.ipc?.getFirstClientId() || "activeProfile"
-		this.sendResponse(requestingClientId, TaskCommandName.GetActiveProfile, activeProfile)
+		this.sendResponse(clientId, TaskCommandName.GetActiveProfile, activeProfile)
 		return activeProfile
 	}
 
-	public async setActiveProfile(name: string): Promise<void> {
-		const config = this.getConfiguration()
+	public async setActiveProfile(name: string, clientId: string): Promise<void> {
+		const config = this.getConfiguration(clientId)
 		// Verify profile exists
 		if (!(config.listApiConfigMeta || []).some((p) => p.name === name)) {
 			throw new Error(`Profile with name "${name}" not found.`)
 		}
 		config.currentApiConfigName = name
 		await this.sidebarProvider.updateApiConfiguration(config)
-		const requestingClientId = this.ipc?.getFirstClientId() || "profiles"
-		this.sendResponse(requestingClientId, TaskCommandName.SetActiveProfile, true) // Acknowledge success
+		this.sendResponse(clientId, TaskCommandName.SetActiveProfile, true) // Acknowledge success
 	}
 
-	public async deleteProfile(name: string): Promise<void> {
-		const config = this.getConfiguration()
+	public async deleteProfile(name: string, clientId: string): Promise<void> {
+		const config = this.getConfiguration(clientId)
 		const initialLength = (config.listApiConfigMeta || []).length
 		config.listApiConfigMeta = (config.listApiConfigMeta || []).filter((p) => p.name !== name)
 		if (config.listApiConfigMeta.length === initialLength) {
@@ -371,15 +478,13 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 			config.currentApiConfigName = config.listApiConfigMeta?.[0]?.name || "default"
 		}
 		await this.sidebarProvider.updateApiConfiguration(config)
-		const requestingClientId = this.ipc?.getFirstClientId() || "profiles"
-		this.sendResponse(requestingClientId, TaskCommandName.DeleteProfile, true) // Acknowledge success
+		this.sendResponse(clientId, TaskCommandName.DeleteProfile, true) // Acknowledge success
 	}
 
 	// --- Status ---
-	public isReady(): boolean {
+	public isReady(clientId: string): boolean {
 		const ready = this.sidebarProvider.isViewLaunched
-		const requestingClientId = this.ipc?.getFirstClientId() || "status"
-		this.sendResponse(requestingClientId, TaskCommandName.IsReady, ready)
+		this.sendResponse(clientId, TaskCommandName.IsReady, ready)
 		return ready
 	}
 } // Ensure class closing brace is present

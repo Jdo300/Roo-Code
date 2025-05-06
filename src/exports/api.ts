@@ -38,12 +38,13 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		this.context = provider.context
 		this.log = () => {}
 
+		// Always enable logging to output window
+		this.log = (...args: unknown[]) => {
+			outputChannelLog(this.outputChannel, ...args)
+			this.outputChannel.show()
+		}
+
 		if (enableLogging) {
-			this.log = (...args: unknown[]) => {
-				outputChannelLog(this.outputChannel, ...args)
-				this.outputChannel.show()
-				console.log(args)
-			}
 			this.logfile = path.join(getWorkspacePath(), "roo-code-messages.log")
 		}
 
@@ -54,8 +55,16 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 				? { host: ipcConfig.tcpHost || "localhost", port: ipcConfig.tcpPort }
 				: { socketPath: ipcConfig.socketPath }
 
-			const ipc = (this.ipc = new IpcServer(ipcOptions, this.log))
+			// Create a logger that writes to the output window
+			const ipcLogger = (...args: unknown[]) => {
+				outputChannelLog(this.outputChannel, "[IPC]", ...args)
+				this.outputChannel.show()
+			}
+
+			this.log("[IPC] Starting server with options:", ipcOptions)
+			const ipc = (this.ipc = new IpcServer(ipcOptions, ipcLogger))
 			ipc.listen()
+			this.log("[IPC] Server listening on", ipcOptions.socketPath || `${ipcOptions.host}:${ipcOptions.port}`)
 		}
 	}
 

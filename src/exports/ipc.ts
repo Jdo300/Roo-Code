@@ -46,14 +46,18 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 		ipc.config.silent = true
 
 		const serverCallback = () => {
+			this._log("[RPC Server] Initializing event handlers...")
 			ipc.server.on("connect", (socket) => this.onConnect(socket))
 			ipc.server.on("socket.disconnected", (socket) => this.onDisconnect(socket))
 			ipc.server.on("message", (data) => this.onMessage(data))
+			this._log("[RPC Server] Event handlers initialized")
 		}
 
 		if (this._socketPath) {
+			this._log(`[RPC Server] Starting on socket path: ${this._socketPath}`)
 			ipc.serve(this._socketPath, serverCallback)
 		} else if (this._host && this._port) {
+			this._log(`[RPC Server] Starting on ${this._host}:${this._port}`)
 			ipc.serveNet(
 				this._host,
 				typeof this._port === "string" ? parseInt(this._port, 10) : this._port,
@@ -62,12 +66,13 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 		}
 
 		ipc.server.start()
+		this._log("[RPC Server] Started and ready for connections")
 	}
 
 	private onConnect(socket: Socket) {
 		const clientId = crypto.randomBytes(6).toString("hex")
 		this._clients.set(clientId, socket)
-		this.log(`[server#onConnect] clientId = ${clientId}, # clients = ${this._clients.size}`)
+		this._log(`[RPC Server] Client connected: ${clientId}, total clients: ${this._clients.size}`)
 
 		this.send(socket, {
 			type: IpcMessageType.Ack,
@@ -76,6 +81,7 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 		})
 
 		this.emit(IpcMessageType.Connect, clientId)
+		this._log(`[RPC Server] Sent acknowledgment to client: ${clientId}`)
 	}
 
 	private onDisconnect(destroyedSocket: Socket) {
@@ -89,7 +95,7 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 			}
 		}
 
-		this.log(`[server#socket.disconnected] clientId = ${disconnectedClientId}, # clients = ${this._clients.size}`)
+		this._log(`[RPC Server] Client disconnected: ${disconnectedClientId}, remaining clients: ${this._clients.size}`)
 
 		if (disconnectedClientId) {
 			this.emit(IpcMessageType.Disconnect, disconnectedClientId)
@@ -98,14 +104,14 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 
 	private onMessage(data: unknown) {
 		if (typeof data !== "object") {
-			this.log("[server#onMessage] invalid data", data)
+			this._log("[RPC Server] Received invalid data:", data)
 			return
 		}
 
 		const result = ipcMessageSchema.safeParse(data)
 
 		if (!result.success) {
-			this.log("[server#onMessage] invalid payload", result.error.format(), data)
+			this._log("[RPC Server] Received invalid payload:", result.error.format(), data)
 			return
 		}
 
@@ -114,10 +120,11 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 		if (payload.origin === IpcOrigin.Client) {
 			switch (payload.type) {
 				case IpcMessageType.TaskCommand:
+					this._log(`[RPC Server] Received task command from client ${payload.clientId}`)
 					this.emit(IpcMessageType.TaskCommand, payload.clientId, payload.data)
 					break
 				default:
-					this.log(`[server#onMessage] unhandled payload: ${JSON.stringify(payload)}`)
+					this._log(`[RPC Server] Received unhandled payload: ${JSON.stringify(payload)}`)
 					break
 			}
 		}
@@ -128,20 +135,24 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 	}
 
 	public broadcast(message: IpcMessage) {
-		// this.log("[server#broadcast] message =", message)
+		this._log("[RPC Server] Broadcasting message:", message)
 		ipc.server.broadcast("message", message)
 	}
 
 	public send(client: string | Socket, message: IpcMessage) {
-		// this.log("[server#send] message =", message)
+		this._log("[RPC Server] Sending message:", message)
 
 		if (typeof client === "string") {
 			const socket = this._clients.get(client)
 
 			if (socket) {
+				this._log(`[RPC Server] Sending to client: ${client}`)
 				ipc.server.emit(socket, "message", message)
+			} else {
+				this._log(`[RPC Server] Client not found: ${client}`)
 			}
 		} else {
+			this._log("[RPC Server] Sending to socket directly")
 			ipc.server.emit(client, "message", message)
 		}
 	}

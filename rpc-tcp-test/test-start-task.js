@@ -41,11 +41,20 @@ async function testStartTask() {
 		console.log("\nStep 1: Getting profiles...")
 		try {
 			console.log("Sending GetProfiles command...")
-			const profiles = await client.getProfiles()
-			console.log("Available profiles:", JSON.stringify(profiles, null, 2))
+			try {
+				const profiles = await client.getProfiles()
+				console.log("Available profiles:", JSON.stringify(profiles, null, 2))
+			} catch (error) {
+				console.error("Error getting profiles:", error)
+			}
 
-			const activeProfile = await client.getActiveProfile()
-			console.log("Active profile:", JSON.stringify(activeProfile, null, 2))
+			console.log("Sending GetActiveProfile command...")
+			try {
+				const activeProfile = await client.getActiveProfile()
+				console.log("Active profile:", JSON.stringify(activeProfile, null, 2))
+			} catch (error) {
+				console.error("Error getting active profile:", error)
+			}
 		} catch (error) {
 			console.error("Failed to get profiles:", error.message)
 			throw error

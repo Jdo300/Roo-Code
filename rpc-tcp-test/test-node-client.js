@@ -100,6 +100,15 @@ class RooCodeClient extends EventEmitter {
 				console.log("[RPC Client] Received TaskEvent:", parsedMsg.data)
 				const { eventName, payload } = parsedMsg.data
 
+				// Check if this is a response to a command
+				if (this.pendingRequests.has(this.clientId)) {
+					console.log("[RPC Client] Found pending request, resolving with payload:", payload)
+					const request = this.pendingRequests.get(this.clientId)
+					clearTimeout(request.timeout)
+					this.pendingRequests.delete(this.clientId)
+					request.resolve(payload)
+				}
+
 				// Validate event payloads
 				if (eventName === "Message") {
 					if (!validateClineMessage(payload.message)) {
@@ -135,21 +144,7 @@ class RooCodeClient extends EventEmitter {
 					}
 				}
 
-				this.emit(eventName, payload)
-			} else if (parsedMsg.type === RooCodeClient.IpcMessageType.TaskEvent) {
-				console.log("[RPC Client] Received TaskEvent:", parsedMsg)
-				const { eventName, payload } = parsedMsg.data
-
-				// Check if this is a response to a command
-				if (this.pendingRequests.has(this.clientId)) {
-					console.log("[RPC Client] Found pending request, resolving with payload:", payload)
-					const request = this.pendingRequests.get(this.clientId)
-					clearTimeout(request.timeout)
-					this.pendingRequests.delete(this.clientId)
-					request.resolve(payload)
-				}
-
-				// Also emit the event for event listeners
+				// Emit the event for event listeners
 				this.emit(eventName, payload)
 			} else {
 				console.error("[RPC Client] Unknown message type:", parsedMsg.type)

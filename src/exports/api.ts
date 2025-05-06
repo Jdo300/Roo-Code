@@ -105,26 +105,21 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 
 	private sendResponse(clientId: string, commandName: TaskCommandName, data: any): void {
 		if (this.ipc) {
-			this.ipc.send(clientId, {
-				type: IpcMessageType.TaskEvent,
-				origin: IpcOrigin.Server,
-				relayClientId: clientId,
+			this.log(`[API] Sending response for ${commandName} to client ${clientId}`)
+			this.log(`[API] Response data: ${JSON.stringify(data)}`)
+
+			const response = {
+				type: IpcMessageType.TaskCommand as const,
+				origin: IpcOrigin.Client as const,
+				clientId,
 				data: {
-					eventName: RooCodeEventName.Message,
-					payload: [
-						{
-							taskId: clientId,
-							action: "created",
-							message: {
-								ts: Date.now(),
-								type: "say",
-								text: JSON.stringify({ commandName, data }),
-								partial: false,
-							},
-						},
-					],
+					commandName,
+					data,
 				},
-			})
+			}
+
+			this.log(`[API] Full response: ${JSON.stringify(response)}`)
+			this.ipc.send(clientId, response)
 		}
 	}
 
@@ -198,8 +193,9 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 			this.ipc.on(IpcMessageType.TaskCommand, async (clientId, command) => {
 				this.log(`[API] Received TaskCommand from client ${clientId}: ${command.commandName}`)
 				try {
-					// Call the corresponding API method based on commandName
-					// Pass clientId to methods that need to send a response back to the specific client
+					this.log(`[API] Processing command ${command.commandName} from client ${clientId}`)
+					this.log(`[API] Command data: ${JSON.stringify(command.data)}`)
+
 					switch (command.commandName) {
 						case TaskCommandName.StartNewTask:
 							await this.startNewTask({

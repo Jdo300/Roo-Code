@@ -145,6 +145,18 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 export type TaskCommand = z.infer<typeof taskCommandSchema>
 
 /**
+ * TaskResponse
+ */
+
+export const taskResponseSchema = z.object({
+	commandName: z.nativeEnum(TaskCommandName), // The command this is a response to
+	data: z.any().optional(), // The response data from the API method
+	// Add a unique identifier to link response to command if needed, e.g., commandId: z.string()
+})
+
+export type TaskResponse = z.infer<typeof taskResponseSchema>
+
+/**
  * TaskEvent
  */
 
@@ -238,6 +250,7 @@ export enum IpcMessageType {
 	Ack = "Ack",
 	TaskCommand = "TaskCommand",
 	TaskEvent = "TaskEvent",
+	TaskResponse = "TaskResponse",
 	EvalEvent = "EvalEvent",
 }
 
@@ -266,6 +279,12 @@ export const ipcMessageSchema = z.discriminatedUnion("type", [
 		origin: z.literal(IpcOrigin.Server),
 		relayClientId: z.string().optional(),
 		data: taskEventSchema,
+	}),
+	z.object({
+		type: z.literal(IpcMessageType.TaskResponse),
+		origin: z.literal(IpcOrigin.Server),
+		relayClientId: z.string().optional(), // Optional: if relaying response to a specific client
+		data: taskResponseSchema,
 	}),
 ])
 

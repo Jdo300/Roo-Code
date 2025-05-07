@@ -1,6 +1,11 @@
 import { EventEmitter } from "events"
 import ipc from "node-ipc"
 
+// TaskCommandName enum to match the server
+const TaskCommandName = {
+  IsReady: "IsReady"
+}
+
 class TestClient extends EventEmitter {
   constructor() {
     super()
@@ -161,7 +166,7 @@ async function runTest() {
   try {
     await client.connect()
     console.log("[Test] Connected, sending IsReady command")
-    const isReady = await client.sendCommand("IsReady")
+    const isReady = await client.sendCommand(TaskCommandName.IsReady)
     console.log("[Test] Received isReady:", isReady)
   } catch (err) {
     console.error("[Test] Error:", err)

@@ -72,17 +72,140 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 					ipcLogger(`[API] Command data: ${JSON.stringify(command.data)}`)
 
 					switch (command.commandName) {
+						case TaskCommandName.StartNewTask:
+							this.log("[API] Handling StartNewTask command")
+							const taskId = await this.startNewTask({
+								...command.data,
+								clientId,
+							})
+							this.sendResponse(clientId, command.commandName, taskId)
+							break
+						case TaskCommandName.CancelTask:
+							await this.cancelTask(command.data, clientId)
+							// Response handled by TaskAborted event
+							break
+						case TaskCommandName.CloseTask:
+							const currentCline = this.sidebarProvider.getCurrentCline()
+							if (currentCline?.taskId === command.data) {
+								await this.clearCurrentTask(undefined, clientId)
+								// Response handled by UI update based on task stack changes
+							} else {
+								this.log(
+									`[API] CloseTask called for non-current task ${command.data}. Only current task close is supported directly.`,
+								)
+								this.sendResponse(clientId, command.commandName, {
+									error: `Task ${command.data} is not the current active task. Cannot close.`,
+								})
+							}
+							break
+						case TaskCommandName.GetCurrentTaskStack:
+							this.log("[API] Handling GetCurrentTaskStack command")
+							const taskStack = this.getCurrentTaskStack(clientId)
+							this.sendResponse(clientId, command.commandName, taskStack)
+							break
+						case TaskCommandName.ClearCurrentTask:
+							this.log("[API] Handling ClearCurrentTask command")
+							await this.clearCurrentTask(command.data, clientId)
+							this.sendResponse(clientId, command.commandName, { success: true })
+							break
+						case TaskCommandName.CancelCurrentTask:
+							this.log("[API] Handling CancelCurrentTask command")
+							await this.cancelCurrentTask(clientId)
+							this.sendResponse(clientId, command.commandName, { success: true })
+							break
+						case TaskCommandName.SendMessage:
+							this.log("[API] Handling SendMessage command")
+							await this.sendMessage(command.data.message, command.data.images, clientId)
+							this.sendResponse(clientId, command.commandName, { success: true })
+							break
+						case TaskCommandName.PressPrimaryButton:
+							this.log("[API] Handling PressPrimaryButton command")
+							await this.pressPrimaryButton(clientId)
+							this.sendResponse(clientId, command.commandName, { success: true })
+							break
+						case TaskCommandName.PressSecondaryButton:
+							this.log("[API] Handling PressSecondaryButton command")
+							await this.pressSecondaryButton(clientId)
+							this.sendResponse(clientId, command.commandName, { success: true })
+							break
+						case TaskCommandName.SetConfiguration:
+							this.log("[API] Handling SetConfiguration command")
+							await this.setConfiguration(command.data, clientId)
+							this.sendResponse(clientId, command.commandName, { success: true })
+							break
 						case TaskCommandName.GetConfiguration:
-							ipcLogger("[API] Handling GetConfiguration command")
+							this.log("[API] Handling GetConfiguration command")
 							this.sendResponse(clientId, command.commandName, this.getConfiguration(clientId))
 							break
+						case TaskCommandName.IsReady:
+							this.log("[API] Handling IsReady command")
+							this.sendResponse(clientId, command.commandName, this.sidebarProvider.isViewLaunched)
+							break
+						case TaskCommandName.GetMessages:
+							this.log("[API] Handling GetMessages command")
+							const messages = this.getMessages(command.data, clientId)
+							this.sendResponse(clientId, command.commandName, messages)
+							break
+						case TaskCommandName.GetTokenUsage:
+							this.log("[API] Handling GetTokenUsage command")
+							const usage = this.getTokenUsage(command.data, clientId)
+							this.sendResponse(clientId, command.commandName, usage)
+							break
+						case TaskCommandName.Log:
+							this.log(`[Client Log] ${command.data}`)
+							// No response expected for Log command
+							break
+						case TaskCommandName.ResumeTask:
+							this.log("[API] Handling ResumeTask command")
+							await this.resumeTask(command.data, clientId)
+							this.sendResponse(clientId, command.commandName, { success: true })
+							break
+						case TaskCommandName.IsTaskInHistory:
+							this.log("[API] Handling IsTaskInHistory command")
+							this.sendResponse(
+								clientId,
+								command.commandName,
+								this.isTaskInHistory(command.data, clientId),
+							)
+							break
+						case TaskCommandName.CreateProfile:
+							this.log("[API] Handling CreateProfile command")
+							await this.createProfile(command.data, clientId)
+							this.sendResponse(clientId, command.commandName, { success: true })
+							break
+						case TaskCommandName.GetProfiles:
+							this.log("[API] Handling GetProfiles command")
+							const profiles = await this.getProfiles(clientId)
+							this.sendResponse(clientId, command.commandName, profiles)
+							break
+						case TaskCommandName.SetActiveProfile:
+							this.log("[API] Handling SetActiveProfile command")
+							await this.setActiveProfile(command.data, clientId)
+							this.sendResponse(clientId, command.commandName, { success: true })
+							break
+						case TaskCommandName.GetActiveProfile:
+							this.log("[API] Handling GetActiveProfile command")
+							this.sendResponse(clientId, command.commandName, this.getActiveProfile(clientId))
+							break
+						case TaskCommandName.DeleteProfile:
+							this.log("[API] Handling DeleteProfile command")
+							await this.deleteProfile(command.data, clientId)
+							this.sendResponse(clientId, command.commandName, { success: true })
+							break
 						default:
-							ipcLogger(`[API] Unhandled command: ${command.commandName}`)
+							const unknownCommand = command as TaskCommand
+							this.log(`[API] Received unknown TaskCommand: ${unknownCommand.commandName}`)
+							this.sendResponse(clientId, unknownCommand.commandName, {
+								error: `Unknown command: ${unknownCommand.commandName}`,
+							})
 							break
 					}
 				} catch (error) {
-					ipcLogger(`[API] Error processing command:`, error)
-					this.sendResponse(clientId, command.commandName, { error: String(error) })
+					this.log(`[API] Error processing TaskCommand ${command.commandName}: ${error}`)
+					// Send an error response back to the client
+					this.sendResponse(clientId, command.commandName, {
+						error: error instanceof Error ? error.message : String(error),
+					})
 				}
 			})
 
@@ -223,123 +346,6 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 
 			this.emit(RooCodeEventName.TaskCreated, cline.taskId)
 		})
-
-		// Listen for TaskCommand messages from the IPC server
-		if (this.ipc) {
-			this.ipc.on(IpcMessageType.TaskCommand, async (clientId, command) => {
-				this.log(`[API] Received TaskCommand from client ${clientId}: ${command.commandName}`)
-				try {
-					this.log(`[API] Processing command ${command.commandName} from client ${clientId}`)
-					this.log(`[API] Command data: ${JSON.stringify(command.data)}`)
-
-					switch (command.commandName) {
-						case TaskCommandName.StartNewTask:
-							await this.startNewTask({
-								...command.data,
-								clientId,
-							})
-							break
-						case TaskCommandName.CancelTask:
-							await this.cancelTask(command.data, clientId)
-							// Response handled by TaskAborted event
-							break
-						case TaskCommandName.CloseTask:
-							const currentCline = this.sidebarProvider.getCurrentCline()
-							if (currentCline?.taskId === command.data) {
-								await this.clearCurrentTask(undefined, clientId)
-								// Response handled by UI update based on task stack changes
-							} else {
-								this.log(
-									`[API] CloseTask called for non-current task ${command.data}. Only current task close is supported directly.`,
-								)
-								this.sendResponse(clientId, command.commandName, {
-									error: `Task ${command.data} is not the current active task. Cannot close.`,
-								})
-							}
-							break
-						case TaskCommandName.GetCurrentTaskStack:
-							this.log("[API] Handling GetCurrentTaskStack command")
-							this.sendResponse(clientId, command.commandName, this.getCurrentTaskStack(clientId))
-							break
-						case TaskCommandName.ClearCurrentTask:
-							await this.clearCurrentTask(command.data, clientId)
-							break
-						case TaskCommandName.CancelCurrentTask:
-							await this.cancelCurrentTask(clientId)
-							break
-						case TaskCommandName.SendMessage:
-							await this.sendMessage(command.data.message, command.data.images, clientId)
-							break
-						case TaskCommandName.PressPrimaryButton:
-							await this.pressPrimaryButton(clientId)
-							break
-						case TaskCommandName.PressSecondaryButton:
-							await this.pressSecondaryButton(clientId)
-							break
-						case TaskCommandName.SetConfiguration:
-							await this.setConfiguration(command.data, clientId)
-							break
-						case TaskCommandName.GetConfiguration:
-							this.log("[API] Handling GetConfiguration command")
-							this.sendResponse(clientId, command.commandName, this.getConfiguration(clientId))
-							break
-						case TaskCommandName.IsReady:
-							this.log("[API] Handling IsReady command")
-							this.sendResponse(clientId, command.commandName, this.isReady(clientId))
-							break
-						case TaskCommandName.GetMessages:
-							this.getMessages(command.data, clientId)
-							break
-						case TaskCommandName.GetTokenUsage:
-							this.getTokenUsage(command.data, clientId)
-							break
-						case TaskCommandName.Log:
-							this.log(`[Client Log] ${command.data}`)
-							// No response expected for Log command
-							break
-						case TaskCommandName.ResumeTask:
-							await this.resumeTask(command.data, clientId)
-							break
-						case TaskCommandName.IsTaskInHistory:
-							this.log("[API] Handling IsTaskInHistory command")
-							this.sendResponse(
-								clientId,
-								command.commandName,
-								this.isTaskInHistory(command.data, clientId),
-							)
-							break
-						case TaskCommandName.CreateProfile:
-							await this.createProfile(command.data, clientId)
-							break
-						case TaskCommandName.GetProfiles:
-							this.getProfiles(clientId)
-							break
-						case TaskCommandName.SetActiveProfile:
-							await this.setActiveProfile(command.data, clientId)
-							break
-						case TaskCommandName.GetActiveProfile:
-							this.getActiveProfile(clientId)
-							break
-						case TaskCommandName.DeleteProfile:
-							await this.deleteProfile(command.data, clientId)
-							break
-						default:
-							const unknownCommand = command as TaskCommand
-							this.log(`[API] Received unknown TaskCommand: ${unknownCommand.commandName}`)
-							this.sendResponse(clientId, unknownCommand.commandName, {
-								error: `Unknown command: ${unknownCommand.commandName}`,
-							})
-							break
-					}
-				} catch (error) {
-					this.log(`[API] Error processing TaskCommand ${command.commandName}: ${error}`)
-					// Send an error response back to the client
-					this.sendResponse(clientId, command.commandName, {
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
-			})
-		}
 	}
 
 	// --- Task Management ---
@@ -473,6 +479,7 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		if (config.listApiConfigMeta.some((p) => p.name === name)) {
 			throw new Error(`Profile with name "${name}" already exists.`)
 		}
+
 		config.listApiConfigMeta.push({ id: crypto.randomUUID(), name }) // Use UUID for ID
 		await this.sidebarProvider.updateApiConfiguration(config) // This saves the updated list
 		this.sendResponse(clientId, TaskCommandName.CreateProfile, name) // Respond with the created profile name
@@ -525,4 +532,4 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		this.sendResponse(clientId, TaskCommandName.IsReady, ready)
 		return ready
 	}
-} // Ensure class closing brace is present
+}

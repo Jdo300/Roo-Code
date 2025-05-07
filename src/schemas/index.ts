@@ -651,7 +651,7 @@ const globalSettingsRecord: GlobalSettingsRecord = {
 	customSupportPrompts: undefined,
 	enhancementApiConfigId: undefined,
 	cachedChromeHostUrl: undefined,
-	historyPreviewCollapsed: undefined, 
+	historyPreviewCollapsed: undefined,
 }
 
 export const GLOBAL_SETTINGS_KEYS = Object.keys(globalSettingsRecord) as Keys<GlobalSettings>[]
@@ -882,9 +882,18 @@ export enum RooCodeEventName {
 	TaskCompleted = "taskCompleted",
 	TaskTokenUsageUpdated = "taskTokenUsageUpdated",
 	TaskToolFailed = "taskToolFailed",
+	CommandResponse = "commandResponse", // Add new event name for command responses
 }
 
 export const rooCodeEventsSchema = z.object({
+	// Add schema for the new CommandResponse event
+	[RooCodeEventName.CommandResponse]: z.tuple([
+		z.object({
+			commandName: z.string(), // Original command name
+			requestId: z.string(), // Original request ID
+			payload: z.any(), // The actual response data
+		}),
+	]),
 	[RooCodeEventName.Message]: z.tuple([
 		z.object({
 			taskId: z.string(),

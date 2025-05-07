@@ -8,7 +8,14 @@ export type { RooCodeEventName }
 
 type RooCodeSettings = GlobalSettings & ProviderSettings
 
-export interface RooCodeAPI extends EventEmitter<RooCodeEvents> {
+import { TaskCommandName } from "../schemas/ipc" // Import TaskCommandName
+
+export interface RooCodeAPI
+	extends EventEmitter<
+		RooCodeEvents & {
+			commandResponse: [{ commandName: TaskCommandName; requestId: string; payload: any }]
+		}
+	> {
 	/**
 	 * Starts a new task with an optional initial message and images.
 	 * @param task Optional initial task message.

@@ -1,0 +1,50 @@
+/** @type {import('ts-jest').JestConfigWithTsJest} */
+module.exports = {
+	preset: "ts-jest",
+	testEnvironment: "node",
+	moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
+	extensionsToTreatAsEsm: [".ts", ".tsx"],
+	transform: {
+		"^.+\\.tsx?$": [
+			"ts-jest",
+			{
+				tsconfig: {
+					module: "ESNext",
+					moduleResolution: "node",
+					esModuleInterop: true,
+					allowJs: true,
+				},
+				useESM: true,
+				diagnostics: false,
+				isolatedModules: true,
+			},
+		],
+	},
+	moduleNameMapper: {
+		"^vscode$": "<rootDir>/../__mocks__/vscode.js",
+		"^delay$": "<rootDir>/../__mocks__/delay.js",
+		"^p-wait-for$": "<rootDir>/../__mocks__/p-wait-for.js",
+		"^serialize-error$": "<rootDir>/../__mocks__/serialize-error.js",
+		"^strip-ansi$": "<rootDir>/../__mocks__/strip-ansi.js",
+		"^default-shell$": "<rootDir>/../__mocks__/default-shell.js",
+		"^os-name$": "<rootDir>/../__mocks__/os-name.js",
+		"^strip-bom$": "<rootDir>/../__mocks__/strip-bom.js",
+		"^openai$": "<rootDir>/../__mocks__/openai.js",
+		"^tiktoken$": "<rootDir>/../__mocks__/tiktoken.js",
+		"^formdata-node$": "<rootDir>/../__mocks__/formdata-node.js",
+		"^openai/shims/node$": "<rootDir>/../__mocks__/openai-shims.js",
+		"^../services/mcp/McpHub$": "<rootDir>/../__mocks__/McpHub.js",
+		"^../services/mcp/McpServerManager$": "<rootDir>/../__mocks__/McpServerManager.js",
+		"@modelcontextprotocol/sdk/(.*)": "<rootDir>/../__mocks__/@modelcontextprotocol/sdk/$1",
+		"^../exports/api$": "<rootDir>/../__mocks__/api.ts",
+		"^../api/(.*)$": "<rootDir>/../__mocks__/api.ts",
+		"^../api$": "<rootDir>/../__mocks__/api.ts",
+		"^../core/webview/ClineProvider$": "<rootDir>/../__mocks__/ClineProvider.ts",
+	},
+	transformIgnorePatterns: [
+		"node_modules/(?!(@modelcontextprotocol|delay|p-wait-for|serialize-error|strip-ansi|default-shell|os-name|strip-bom)/)",
+	],
+	setupFiles: ["<rootDir>/setup.ts"],
+	rootDir: ".",
+	testMatch: ["<rootDir>/**/*.test.ts"],
+}

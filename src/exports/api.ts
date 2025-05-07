@@ -6,7 +6,7 @@ import * as path from "path"
 import { getWorkspacePath } from "../utils/path"
 import { ClineProvider } from "../core/webview/ClineProvider"
 import { RooCodeSettings, RooCodeEvents, RooCodeEventName } from "../schemas"
-import { IpcMessageType, IpcOrigin, TaskCommandName, TaskCommand } from "../schemas/ipc"
+import { IpcMessageType, IpcOrigin, TaskCommandName, TaskCommand, IpcMessage, TaskEvent } from "../schemas/ipc"
 import { getApiMetrics } from "../shared/getApiMetrics"
 
 import { RooCodeAPI } from "./interface"
@@ -63,6 +63,29 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 
 			this.log("[IPC] Starting server with options:", ipcOptions)
 			const ipc = (this.ipc = new IpcServer(ipcOptions, ipcLogger))
+
+			// Set up command handler before starting server
+			ipc.on(IpcMessageType.TaskCommand, async (clientId, command) => {
+				ipcLogger(`[API] Received TaskCommand from client ${clientId}: ${command.commandName}`)
+				try {
+					ipcLogger(`[API] Processing command ${command.commandName} from client ${clientId}`)
+					ipcLogger(`[API] Command data: ${JSON.stringify(command.data)}`)
+
+					switch (command.commandName) {
+						case TaskCommandName.GetConfiguration:
+							ipcLogger("[API] Handling GetConfiguration command")
+							this.sendResponse(clientId, command.commandName, this.getConfiguration(clientId))
+							break
+						default:
+							ipcLogger(`[API] Unhandled command: ${command.commandName}`)
+							break
+					}
+				} catch (error) {
+					ipcLogger(`[API] Error processing command:`, error)
+					this.sendResponse(clientId, command.commandName, { error: String(error) })
+				}
+			})
+
 			ipc.listen()
 			this.log("[IPC] Server listening on", ipcOptions.socketPath || `${ipcOptions.host}:${ipcOptions.port}`)
 		}
@@ -103,19 +126,32 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		}
 	}
 
-	private sendResponse(clientId: string, commandName: TaskCommandName, data: any): void {
+	private sendResponse(
+		clientId: string,
+		originalCommandName: TaskCommandName,
+		payload: any,
+		requestId?: string,
+	): void {
 		if (this.ipc) {
-			this.log(`[API] Sending response for ${commandName} to client ${clientId}`)
-			this.log(`[API] Response data: ${JSON.stringify(data)}`)
+			this.log(
+				`[API] Sending command response for ${originalCommandName} to client ${clientId}${requestId ? ` (Request ID: ${requestId})` : ""}`,
+			)
+			this.log(`[API] Response payload: ${JSON.stringify(payload)}`)
 
-			const response = {
-				type: IpcMessageType.TaskCommand as const,
-				origin: IpcOrigin.Client as const,
-				clientId,
+			const response: Extract<IpcMessage, { type: IpcMessageType.TaskEvent }> = {
+				type: IpcMessageType.TaskEvent,
+				origin: IpcOrigin.Server,
+				relayClientId: clientId,
 				data: {
-					commandName,
-					data,
-				},
+					eventName: RooCodeEventName.CommandResponse,
+					payload: [
+						{
+							commandName: originalCommandName,
+							requestId: requestId || "",
+							payload: payload,
+						},
+					],
+				} as Extract<TaskEvent, { eventName: RooCodeEventName.CommandResponse }>,
 			}
 
 			this.log(`[API] Full response: ${JSON.stringify(response)}`)
@@ -222,7 +258,8 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 							}
 							break
 						case TaskCommandName.GetCurrentTaskStack:
-							this.getCurrentTaskStack(clientId)
+							this.log("[API] Handling GetCurrentTaskStack command")
+							this.sendResponse(clientId, command.commandName, this.getCurrentTaskStack(clientId))
 							break
 						case TaskCommandName.ClearCurrentTask:
 							await this.clearCurrentTask(command.data, clientId)
@@ -243,12 +280,12 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 							await this.setConfiguration(command.data, clientId)
 							break
 						case TaskCommandName.GetConfiguration:
-							// This method now takes clientId to send response
-							this.getConfiguration(clientId)
+							this.log("[API] Handling GetConfiguration command")
+							this.sendResponse(clientId, command.commandName, this.getConfiguration(clientId))
 							break
 						case TaskCommandName.IsReady:
-							// This method now takes clientId to send response
-							this.isReady(clientId)
+							this.log("[API] Handling IsReady command")
+							this.sendResponse(clientId, command.commandName, this.isReady(clientId))
 							break
 						case TaskCommandName.GetMessages:
 							this.getMessages(command.data, clientId)
@@ -264,8 +301,12 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 							await this.resumeTask(command.data, clientId)
 							break
 						case TaskCommandName.IsTaskInHistory:
-							// This method now takes clientId to send response
-							this.isTaskInHistory(command.data, clientId)
+							this.log("[API] Handling IsTaskInHistory command")
+							this.sendResponse(
+								clientId,
+								command.commandName,
+								this.isTaskInHistory(command.data, clientId),
+							)
 							break
 						case TaskCommandName.CreateProfile:
 							await this.createProfile(command.data, clientId)
@@ -330,6 +371,7 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		}
 		await this.sidebarProvider.initClineWithHistoryItem(task.historyItem)
 		this.sendResponse(clientId, TaskCommandName.ResumeTask, true)
+		return
 	}
 
 	public async isTaskInHistory(taskId: string, clientId: string): Promise<boolean> {
@@ -411,11 +453,11 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	}
 
 	// --- Configuration & Profiles ---
-	public getConfiguration(clientId: string): RooCodeSettings {
+	public getConfiguration(clientId: string, requestId?: string): RooCodeSettings {
 		const globalState = this.sidebarProvider.contextProxy.getValues()
 		const providerSettings = this.sidebarProvider.contextProxy.getProviderSettings()
 		const config = { ...globalState, ...providerSettings } as RooCodeSettings
-		this.sendResponse(clientId, TaskCommandName.GetConfiguration, config)
+		this.sendResponse(clientId, TaskCommandName.GetConfiguration, config, requestId) // Use new sendResponse signature
 		return config
 	}
 
@@ -444,10 +486,10 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		return profiles
 	}
 
-	public getActiveProfile(clientId: string): string | undefined {
-		const config = this.getConfiguration(clientId) // Pass clientId to getConfiguration
+	public getActiveProfile(clientId: string, requestId?: string): string | undefined {
+		const config = this.getConfiguration(clientId, requestId) // Pass clientId and requestId to getConfiguration
 		const activeProfile = config.currentApiConfigName
-		this.sendResponse(clientId, TaskCommandName.GetActiveProfile, activeProfile)
+		this.sendResponse(clientId, TaskCommandName.GetActiveProfile, activeProfile, requestId) // Use new sendResponse signature
 		return activeProfile
 	}
 

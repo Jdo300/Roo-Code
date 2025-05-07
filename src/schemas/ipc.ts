@@ -197,6 +197,11 @@ export const taskEventSchema = z.discriminatedUnion("eventName", [
 		eventName: z.literal(RooCodeEventName.TaskTokenUsageUpdated),
 		payload: rooCodeEventsSchema.shape[RooCodeEventName.TaskTokenUsageUpdated],
 	}),
+	// Add case for the new CommandResponse event
+	z.object({
+		eventName: z.literal(RooCodeEventName.CommandResponse),
+		payload: rooCodeEventsSchema.shape[RooCodeEventName.CommandResponse], // Use the schema defined in index.ts
+	}),
 ])
 
 export type TaskEvent = z.infer<typeof taskEventSchema>

@@ -5,7 +5,15 @@ import * as path from "path"
 
 import { getWorkspacePath } from "../utils/path"
 import { ClineProvider } from "../core/webview/ClineProvider"
-import { RooCodeSettings, RooCodeEvents, RooCodeEventName } from "../schemas"
+import {
+	RooCodeSettings,
+	RooCodeEvents,
+	RooCodeEventName,
+	TokenUsage,
+	ToolUsage,
+	ToolName,
+	ClineMessage,
+} from "../schemas"
 import { IpcMessageType, IpcOrigin, TaskCommandName, TaskCommand, IpcMessage, TaskEvent } from "../schemas/ipc"
 import { getApiMetrics } from "../shared/getApiMetrics"
 
@@ -21,6 +29,8 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	private readonly taskMap = new Map<string, ClineProvider>()
 	private readonly log: (...args: unknown[]) => void
 	private logfile?: string
+	// Stores the full concatenated text of the last partial message used to calculate a delta for IPC. Keyed by taskId.
+	private lastIPCDeltaBaseText: Map<string, string> = new Map()
 
 	constructor(
 		outputChannel: vscode.OutputChannel,
@@ -67,145 +77,157 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 			// Set up command handler before starting server
 			ipc.on(IpcMessageType.TaskCommand, async (clientId, command) => {
 				ipcLogger(`[API] Received TaskCommand from client ${clientId}: ${command.commandName}`)
-				try {
-					ipcLogger(`[API] Processing command ${command.commandName} from client ${clientId}`)
-					ipcLogger(`[API] Command data: ${JSON.stringify(command.data)}`)
+				const { commandName, data, requestId } = command
+				ipcLogger(`[API] Processing command ${commandName} from client ${clientId} (Request ID: ${requestId})`)
+				ipcLogger(`[API] Command data: ${JSON.stringify(data)}`)
 
-					switch (command.commandName) {
+				try {
+					switch (commandName) {
 						case TaskCommandName.StartNewTask:
 							this.log("[API] Handling StartNewTask command")
 							const taskId = await this.startNewTask({
-								...command.data,
+								...data,
 								clientId,
 							})
-							this.sendResponse(clientId, command.commandName, taskId)
+							this.sendResponse(clientId, commandName, taskId, requestId) // Pass requestId
 							break
 						case TaskCommandName.CancelTask:
-							await this.cancelTask(command.data, clientId)
+							await this.cancelTask(data, clientId)
 							// Response handled by TaskAborted event
 							break
 						case TaskCommandName.CloseTask:
 							const currentCline = this.sidebarProvider.getCurrentCline()
-							if (currentCline?.taskId === command.data) {
+							if (currentCline?.taskId === data) {
 								await this.clearCurrentTask(undefined, clientId)
 								// Response handled by UI update based on task stack changes
 							} else {
 								this.log(
-									`[API] CloseTask called for non-current task ${command.data}. Only current task close is supported directly.`,
+									`[API] CloseTask called for non-current task ${data}. Only current task close is supported directly.`,
 								)
-								this.sendResponse(clientId, command.commandName, {
-									error: `Task ${command.data} is not the current active task. Cannot close.`,
-								})
+								this.sendResponse(
+									clientId,
+									commandName,
+									{
+										error: `Task ${data} is not the current active task. Cannot close.`,
+									},
+									requestId,
+								) // Pass requestId
 							}
 							break
 						case TaskCommandName.GetCurrentTaskStack:
 							this.log("[API] Handling GetCurrentTaskStack command")
 							const taskStack = this.getCurrentTaskStack(clientId)
-							this.sendResponse(clientId, command.commandName, taskStack)
+							this.sendResponse(clientId, commandName, taskStack, requestId) // Pass requestId
 							break
 						case TaskCommandName.ClearCurrentTask:
 							this.log("[API] Handling ClearCurrentTask command")
-							await this.clearCurrentTask(command.data, clientId)
-							this.sendResponse(clientId, command.commandName, { success: true })
+							await this.clearCurrentTask(data, clientId)
+							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
 							break
 						case TaskCommandName.CancelCurrentTask:
 							this.log("[API] Handling CancelCurrentTask command")
 							await this.cancelCurrentTask(clientId)
-							this.sendResponse(clientId, command.commandName, { success: true })
+							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
 							break
 						case TaskCommandName.SendMessage:
 							this.log("[API] Handling SendMessage command")
-							await this.sendMessage(command.data.message, command.data.images, clientId)
-							this.sendResponse(clientId, command.commandName, { success: true })
+							await this.sendMessage(data.message, data.images, clientId)
+							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
 							break
 						case TaskCommandName.PressPrimaryButton:
 							this.log("[API] Handling PressPrimaryButton command")
 							await this.pressPrimaryButton(clientId)
-							this.sendResponse(clientId, command.commandName, { success: true })
+							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
 							break
 						case TaskCommandName.PressSecondaryButton:
 							this.log("[API] Handling PressSecondaryButton command")
 							await this.pressSecondaryButton(clientId)
-							this.sendResponse(clientId, command.commandName, { success: true })
+							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
 							break
 						case TaskCommandName.SetConfiguration:
 							this.log("[API] Handling SetConfiguration command")
-							await this.setConfiguration(command.data, clientId)
-							this.sendResponse(clientId, command.commandName, { success: true })
+							await this.setConfiguration(data, clientId)
+							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
 							break
 						case TaskCommandName.GetConfiguration:
 							this.log("[API] Handling GetConfiguration command")
-							this.sendResponse(clientId, command.commandName, this.getConfiguration(clientId))
+							this.sendResponse(clientId, commandName, this.getConfiguration(clientId), requestId) // Pass requestId
 							break
 						case TaskCommandName.IsReady:
 							this.log("[API] Handling IsReady command")
-							this.sendResponse(clientId, command.commandName, this.sidebarProvider.isViewLaunched)
+							this.sendResponse(clientId, commandName, this.sidebarProvider.isViewLaunched, requestId) // Pass requestId
 							break
 						case TaskCommandName.GetMessages:
 							this.log("[API] Handling GetMessages command")
-							const messages = this.getMessages(command.data, clientId)
-							this.sendResponse(clientId, command.commandName, messages)
+							const messages = this.getMessages(data, clientId)
+							this.sendResponse(clientId, commandName, messages, requestId) // Pass requestId
 							break
 						case TaskCommandName.GetTokenUsage:
 							this.log("[API] Handling GetTokenUsage command")
-							const usage = this.getTokenUsage(command.data, clientId)
-							this.sendResponse(clientId, command.commandName, usage)
+							const usage = this.getTokenUsage(data, clientId)
+							this.sendResponse(clientId, commandName, usage, requestId) // Pass requestId
 							break
 						case TaskCommandName.Log:
-							this.log(`[Client Log] ${command.data}`)
+							this.log(`[Client Log] ${data}`)
 							// No response expected for Log command
 							break
 						case TaskCommandName.ResumeTask:
 							this.log("[API] Handling ResumeTask command")
-							await this.resumeTask(command.data, clientId)
-							this.sendResponse(clientId, command.commandName, { success: true })
+							await this.resumeTask(data, clientId)
+							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
 							break
 						case TaskCommandName.IsTaskInHistory:
 							this.log("[API] Handling IsTaskInHistory command")
-							this.sendResponse(
-								clientId,
-								command.commandName,
-								this.isTaskInHistory(command.data, clientId),
-							)
+							this.sendResponse(clientId, commandName, this.isTaskInHistory(data, clientId), requestId) // Pass requestId
 							break
 						case TaskCommandName.CreateProfile:
 							this.log("[API] Handling CreateProfile command")
-							await this.createProfile(command.data, clientId)
-							this.sendResponse(clientId, command.commandName, { success: true })
+							await this.createProfile(data, clientId)
+							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
 							break
 						case TaskCommandName.GetProfiles:
 							this.log("[API] Handling GetProfiles command")
 							const profiles = await this.getProfiles(clientId)
-							this.sendResponse(clientId, command.commandName, profiles)
+							this.sendResponse(clientId, commandName, profiles, requestId) // Pass requestId
 							break
 						case TaskCommandName.SetActiveProfile:
 							this.log("[API] Handling SetActiveProfile command")
-							await this.setActiveProfile(command.data, clientId)
-							this.sendResponse(clientId, command.commandName, { success: true })
+							await this.setActiveProfile(data, clientId)
+							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
 							break
 						case TaskCommandName.GetActiveProfile:
 							this.log("[API] Handling GetActiveProfile command")
-							this.sendResponse(clientId, command.commandName, this.getActiveProfile(clientId))
+							this.sendResponse(clientId, commandName, this.getActiveProfile(clientId), requestId) // Pass requestId
 							break
 						case TaskCommandName.DeleteProfile:
 							this.log("[API] Handling DeleteProfile command")
-							await this.deleteProfile(command.data, clientId)
-							this.sendResponse(clientId, command.commandName, { success: true })
+							await this.deleteProfile(data, clientId)
+							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
 							break
 						default:
 							const unknownCommand = command as TaskCommand
 							this.log(`[API] Received unknown TaskCommand: ${unknownCommand.commandName}`)
-							this.sendResponse(clientId, unknownCommand.commandName, {
-								error: `Unknown command: ${unknownCommand.commandName}`,
-							})
+							this.sendResponse(
+								clientId,
+								unknownCommand.commandName,
+								{
+									error: `Unknown command: ${unknownCommand.commandName}`,
+								},
+								requestId,
+							) // Pass requestId
 							break
 					}
 				} catch (error) {
-					this.log(`[API] Error processing TaskCommand ${command.commandName}: ${error}`)
+					this.log(`[API] Error processing TaskCommand ${commandName}: ${error}`)
 					// Send an error response back to the client
-					this.sendResponse(clientId, command.commandName, {
-						error: error instanceof Error ? error.message : String(error),
-					})
+					this.sendResponse(
+						clientId,
+						commandName,
+						{
+							error: error instanceof Error ? error.message : String(error),
+						},
+						requestId,
+					) // Pass requestId
 				}
 			})
 
@@ -285,67 +307,159 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	private registerListeners(provider: ClineProvider): void {
 		// Listen for events from the ClineProvider
 		provider.on("clineCreated", (cline) => {
+			// Store the ClineProvider instance associated with this task ID
+			this.taskMap.set(cline.taskId, provider)
+
+			// Emit TaskCreated event
+			this.emit(RooCodeEventName.TaskCreated, cline.taskId)
+			this.broadcastEvent(RooCodeEventName.TaskCreated, cline.taskId)
+
+			// Task Started
 			cline.on("taskStarted", async () => {
 				this.emit(RooCodeEventName.TaskStarted, cline.taskId)
-				// Store the ClineProvider instance associated with this task ID
-				this.taskMap.set(cline.taskId, provider)
 				await this.fileLog(`[${new Date().toISOString()}] taskStarted -> ${cline.taskId}\n`)
+				this.broadcastEvent(RooCodeEventName.TaskStarted, cline.taskId)
 			})
 
-			cline.on("message", async (message: { message: any; action?: string }) => {
-				this.emit(RooCodeEventName.Message, {
-					taskId: cline.taskId,
-					message: message.message,
-					action: message.action === "updated" ? "updated" : "created",
-				})
-				if (message.message && message.message.partial !== true) {
-					await this.fileLog(`[${new Date().toISOString()}] ${JSON.stringify(message.message, null, 2)}\n`)
+			// Message
+			cline.on("message", async (data: { message: ClineMessage; action?: "created" | "updated" }) => {
+				// data.message is ClineMessage from Cline (contains concatenated text for partials)
+
+				const originalMessage = data.message
+				const originalAction: "created" | "updated" = data.action === "updated" ? "updated" : "created"
+				let messageForIPC = { ...originalMessage } // Start with a copy for IPC
+				const isStreamingCompletionResult =
+					originalMessage.type === "say" && originalMessage.say === "completion_result"
+
+				if (isStreamingCompletionResult && originalMessage.partial) {
+					const fullConcatenatedTextFromCline = originalMessage.text || ""
+					const previouslySentFullTextToIPC = this.lastIPCDeltaBaseText.get(cline.taskId) || ""
+					let deltaForIPC = fullConcatenatedTextFromCline
+
+					if (fullConcatenatedTextFromCline.startsWith(previouslySentFullTextToIPC)) {
+						deltaForIPC = fullConcatenatedTextFromCline.substring(previouslySentFullTextToIPC.length)
+					}
+					// Else (e.g., stream reset), send the full new text as a delta, and update base.
+
+					messageForIPC.text = deltaForIPC
+					this.lastIPCDeltaBaseText.set(cline.taskId, fullConcatenatedTextFromCline)
+				} else if (isStreamingCompletionResult && !originalMessage.partial) {
+					// Final part of the stream
+					const finalFullTextFromCline = originalMessage.text || ""
+					const previouslySentFullTextToIPC = this.lastIPCDeltaBaseText.get(cline.taskId) || ""
+					let finalDeltaForIPC = finalFullTextFromCline
+
+					if (finalFullTextFromCline.startsWith(previouslySentFullTextToIPC)) {
+						finalDeltaForIPC = finalFullTextFromCline.substring(previouslySentFullTextToIPC.length)
+					}
+					messageForIPC.text = finalDeltaForIPC
+					this.lastIPCDeltaBaseText.delete(cline.taskId) // Clean up for this task
+				} else {
+					// Not a streaming completion result, or a non-partial message that wasn't part of a stream.
+					// Clear any existing delta tracking for this task.
+					this.lastIPCDeltaBaseText.delete(cline.taskId)
 				}
+
+				// For local listeners, emit the original message from Cline (with concatenated text)
+				const localEventDataPayload = {
+					taskId: cline.taskId,
+					message: originalMessage, // Original message from Cline
+					action: originalAction,
+				}
+				this.emit(RooCodeEventName.Message, localEventDataPayload)
+
+				if (originalMessage && !originalMessage.partial) {
+					await this.fileLog(`[${new Date().toISOString()}] ${JSON.stringify(originalMessage, null, 2)}\n`)
+				}
+
+				// For IPC broadcast, send the message with delta text
+				const ipcEventDataPayload = {
+					taskId: cline.taskId,
+					message: messageForIPC, // Contains delta if applicable
+					action: originalAction,
+				}
+				this.broadcastEvent(RooCodeEventName.Message, ipcEventDataPayload)
 			})
 
+			// Mode Switch
 			cline.on("taskModeSwitched", (taskId: string, mode: string) => {
 				this.emit(RooCodeEventName.TaskModeSwitched, taskId, mode)
+				this.broadcastEvent(RooCodeEventName.TaskModeSwitched, taskId, mode)
 			})
 
+			// Ask Responded
 			cline.on("taskAskResponded", () => {
 				this.emit(RooCodeEventName.TaskAskResponded, cline.taskId)
+				this.broadcastEvent(RooCodeEventName.TaskAskResponded, cline.taskId)
 			})
 
+			// Task Aborted
 			cline.on("taskAborted", () => {
 				this.emit(RooCodeEventName.TaskAborted, cline.taskId)
 				this.taskMap.delete(cline.taskId)
+				this.broadcastEvent(RooCodeEventName.TaskAborted, cline.taskId)
+				this.lastIPCDeltaBaseText.delete(cline.taskId) // Clean up delta tracking
 			})
 
-			cline.on("taskCompleted", async (_: any, tokenUsage: any, toolUsage: any) => {
+			// Task Completed
+			cline.on("taskCompleted", async (_: unknown, tokenUsage: TokenUsage, toolUsage: ToolUsage) => {
 				this.emit(RooCodeEventName.TaskCompleted, cline.taskId, tokenUsage, toolUsage)
 				this.taskMap.delete(cline.taskId)
+				this.lastIPCDeltaBaseText.delete(cline.taskId) // Clean up delta tracking
 				await this.fileLog(
 					`[${new Date().toISOString()}] taskCompleted -> ${cline.taskId} | ${JSON.stringify(tokenUsage, null, 2)} | ${JSON.stringify(toolUsage, null, 2)}\n`,
 				)
+				this.broadcastEvent(RooCodeEventName.TaskCompleted, cline.taskId, tokenUsage, toolUsage)
 			})
 
+			// Task Spawned
 			cline.on("taskSpawned", (childTaskId: string) => {
 				this.emit(RooCodeEventName.TaskSpawned, cline.taskId, childTaskId)
+				this.broadcastEvent(RooCodeEventName.TaskSpawned, cline.taskId, childTaskId)
 			})
 
+			// Task Paused
 			cline.on("taskPaused", () => {
 				this.emit(RooCodeEventName.TaskPaused, cline.taskId)
+				this.broadcastEvent(RooCodeEventName.TaskPaused, cline.taskId)
 			})
 
+			// Task Unpaused
 			cline.on("taskUnpaused", () => {
 				this.emit(RooCodeEventName.TaskUnpaused, cline.taskId)
+				this.broadcastEvent(RooCodeEventName.TaskUnpaused, cline.taskId)
 			})
 
-			cline.on("taskTokenUsageUpdated", (_: any, usage: any) => {
+			// Token Usage Updated
+			cline.on("taskTokenUsageUpdated", (_: unknown, usage: TokenUsage) => {
 				this.emit(RooCodeEventName.TaskTokenUsageUpdated, cline.taskId, usage)
+				this.broadcastEvent(RooCodeEventName.TaskTokenUsageUpdated, cline.taskId, usage)
 			})
 
-			cline.on("taskToolFailed", (taskId: string, tool: any, error: any) => {
+			// Tool Failed
+			cline.on("taskToolFailed", (taskId: string, tool: ToolName, error: string) => {
 				this.emit(RooCodeEventName.TaskToolFailed, taskId, tool, error)
+				this.broadcastEvent(RooCodeEventName.TaskToolFailed, taskId, tool, error)
 			})
-
-			this.emit(RooCodeEventName.TaskCreated, cline.taskId)
 		})
+	}
+
+	private broadcastEvent<T extends keyof RooCodeEvents>(
+		eventName: T,
+		...args: RooCodeEvents[T] extends readonly [...infer P] ? P : never
+	): void {
+		if (this.ipc) {
+			const eventData = {
+				eventName,
+				payload: args,
+			} as unknown as TaskEvent // Use unknown assertion as a workaround for complex generic discriminated union
+
+			this.ipc.broadcast({
+				type: IpcMessageType.TaskEvent,
+				origin: IpcOrigin.Server,
+				data: eventData,
+			})
+		}
 	}
 
 	// --- Task Management ---

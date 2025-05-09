@@ -1,12 +1,11 @@
 // @ts-check
-/** @typedef {import('../../out/src/schemas/ipc').TaskCommandName} TaskCommandNameType */
 
 const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
 async function testClearCurrentTask() {
   const client = new IpcClient();
   let exitCode = 0;
-  /** @type {TaskCommandNameType} */
+  /** @type {string} */
   const commandToTest = TaskCommandName.ClearCurrentTask;
   
   // This command takes an optional string. We'll send one for testing.

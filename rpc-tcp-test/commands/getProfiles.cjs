@@ -1,6 +1,5 @@
 // @ts-check
 
-/** @typedef {import('../../out/src/schemas/ipc').TaskCommandName} TaskCommandNameEnum */
 /** @typedef {string[]} GetProfilesResponse */
 
 const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');

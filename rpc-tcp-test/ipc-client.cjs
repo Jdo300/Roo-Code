@@ -4,8 +4,31 @@
 
 const { EventEmitter } = require("events");
 const ipc = require("node-ipc");
-// For runtime, TaskCommandName will be the enum object from the .js file
-const { TaskCommandName } = require("../out/src/schemas/ipc.js"); // Use .js for require
+
+const TaskCommandName = {
+    StartNewTask: "StartNewTask",
+    CancelTask: "CancelTask",
+    CloseTask: "CloseTask",
+    GetCurrentTaskStack: "GetCurrentTaskStack",
+    ClearCurrentTask: "ClearCurrentTask",
+    CancelCurrentTask: "CancelCurrentTask",
+    SendMessage: "SendMessage",
+    PressPrimaryButton: "PressPrimaryButton",
+    PressSecondaryButton: "PressSecondaryButton",
+    SetConfiguration: "SetConfiguration",
+    GetConfiguration: "GetConfiguration",
+    IsReady: "IsReady",
+    GetMessages: "GetMessages",
+    GetTokenUsage: "GetTokenUsage",
+    Log: "Log",
+    ResumeTask: "ResumeTask",
+    IsTaskInHistory: "IsTaskInHistory",
+    CreateProfile: "CreateProfile",
+    GetProfiles: "GetProfiles",
+    SetActiveProfile: "SetActiveProfile",
+    GetActiveProfile: "GetActiveProfile",
+    DeleteProfile: "DeleteProfile",
+};
 
 /**
  * @class IpcClient
@@ -175,7 +198,7 @@ class IpcClient extends EventEmitter {
   }
 
   /**
-   * @param {TaskCommandNameEnum} commandName
+   * @param {string} commandName
    * @param {any} [commandData]
    * @returns {Promise<any>}
    */

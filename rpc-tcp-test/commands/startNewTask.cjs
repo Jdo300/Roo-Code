@@ -1,5 +1,4 @@
 // @ts-check
-/** @typedef {import('../../out/src/schemas/ipc').TaskCommandName} TaskCommandNameType */
 // StartTaskPayload and Configuration typedefs removed due to persistent resolution issues.
 
 const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
@@ -7,7 +6,7 @@ const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 async function testStartNewTask() {
   const client = new IpcClient();
   let exitCode = 0;
-  /** @type {TaskCommandNameType} */
+  /** @type {string} */
   const commandToTest = TaskCommandName.StartNewTask;
   
   // Define the payload for starting a new task

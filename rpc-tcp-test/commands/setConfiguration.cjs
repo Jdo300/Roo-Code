@@ -1,5 +1,4 @@
 // @ts-check
-/** @typedef {import('../../out/src/schemas/ipc').TaskCommandName} TaskCommandNameType */
 // ConfigurationType typedef removed due to persistent resolution issues with RooCodeSettings
 
 const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
@@ -7,7 +6,7 @@ const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 async function testSetConfiguration() {
   const client = new IpcClient();
   let exitCode = 0;
-  /** @type {TaskCommandNameType} */
+  /** @type {string} */
   const commandToTest = TaskCommandName.SetConfiguration;
   console.log(`[Test Script: ${commandToTest}] Starting test...`);
 

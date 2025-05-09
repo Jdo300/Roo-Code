@@ -1,5 +1,5 @@
-const { EventEmitter } = require("events")
-const ipc = require("node-ipc")
+import { EventEmitter } from "events"
+import ipc from "node-ipc"
 
 class RooCodeClient extends EventEmitter {
 	constructor() {
@@ -180,4 +180,4 @@ class RooCodeClient extends EventEmitter {
 	}
 }
 
-module.exports = RooCodeClient
+export default RooCodeClient

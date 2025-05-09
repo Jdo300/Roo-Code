@@ -151,12 +151,12 @@ export interface RooCodeAPI
 	 * Retrieves messages for a given task ID.
 	 * @param taskId The ID of the task.
 	 */
-	getMessages(taskId: string, clientId: string): void
+	getMessages(taskId: string, clientId: string, requestId?: string): ClineMessage[]
 
 	/**
 	 * Retrieves token usage for a given task ID.
 	 * @param taskId The ID of the task.
 	 * @param clientId The ID of the requesting client.
 	 */
-	getTokenUsage(taskId: string, clientId: string): void
+	getTokenUsage(taskId: string, clientId: string, requestId?: string): TokenUsage | undefined
 }

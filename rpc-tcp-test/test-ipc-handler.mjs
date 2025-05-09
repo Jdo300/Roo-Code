@@ -92,7 +92,7 @@ class TestClient extends EventEmitter {
       ipc.config.id = "test-client"
       ipc.config.retry = 3000
       ipc.config.maxRetries = 5
-      ipc.config.silent = false
+      ipc.config.silent = true // Keep silent true
       ipc.config.sync = false
       ipc.config.unlink = false
       ipc.config.appspace = ""
@@ -114,7 +114,6 @@ class TestClient extends EventEmitter {
         })
 
         socket.on("message", (data) => {
-          console.log("[Test Client] Received raw message:", data)
           if (typeof data === "string") {
             this.buffer += data
             this._processBuffer()
@@ -147,7 +146,6 @@ class TestClient extends EventEmitter {
   }
 
   _processBuffer() {
-    console.log("[Test Client] Processing buffer:", this.buffer)
     const messages = this.buffer.split("\n")
     this.buffer = messages.pop() || ""
 
@@ -163,7 +161,6 @@ class TestClient extends EventEmitter {
   }
 
   _handleMessage(parsedMsg) {
-    console.log("[Test Client] Handling message:", parsedMsg)
     try {
       if (parsedMsg.type === "Ack") {
         this.clientId = parsedMsg.data.clientId
@@ -171,20 +168,44 @@ class TestClient extends EventEmitter {
         this.emit("connect", parsedMsg.data)
       } else if (parsedMsg.type === "TaskEvent") {
         const { eventName, payload } = parsedMsg.data
-        console.log("[Test Client] Received TaskEvent:", { eventName, payload })
-        console.log("[Test Client] Full TaskEvent payload:", JSON.stringify(payload, null, 2))
+        // console.log("[Test Client] Received TaskEvent:", { eventName, payload }) // Keep this commented out for now
+        // console.log("[Test Client] Full TaskEvent payload:", JSON.stringify(payload, null, 2)) // Keep this commented out for now
 
         switch (eventName) {
           case "commandResponse":
-            console.log("[Test Client] Processing commandResponse payload:", JSON.stringify(payload, null, 2))
             const { commandName, requestId, payload: responsePayload } = payload[0]
-            console.log(`[Test Client] Received response for ${commandName}:`, responsePayload)
-            this.emit("commandResponse", { commandName, requestId, payload: responsePayload })
+            // Reduce logging for commandResponse payload and response for GetConfiguration
+            if (commandName === TaskCommandName.GetConfiguration) {
+            } else {
+              console.log(`[Test Client] Received response for ${commandName} with requestId ${requestId}:`, responsePayload)
+            }
+
+            const pendingRequest = this.pendingRequests.get(requestId);
+
+            if (pendingRequest) {
+              console.log("[Test Client] Matching pending request found for requestId:", requestId);
+              clearTimeout(pendingRequest.timeoutId); // Corrected timeout property name
+              this.pendingRequests.delete(requestId);
+
+              // Track result before resolving
+              this.testResults.push({
+                command: commandName, // Use commandName from response
+                data: null, // Data is not in the response, can't track here easily
+                response: responsePayload,
+                success: !responsePayload?.error
+              });
+
+              pendingRequest.resolve(responsePayload);
+            } else {
+              console.log("[Test Client] No matching pending request found for requestId:", requestId);
+              // If no matching request, it might be an unsolicited response or an event
+              // We can emit it as a generic commandResponse event for other listeners if needed,
+              // but it won't resolve a specific sendCommand promise.
+              this.emit("commandResponse", { commandName, requestId, payload: responsePayload });
+            }
             break;
           case "message":
-            console.log("[Test Client] Received message event:", payload[0])
             const { taskId, action, message } = payload[0]
-            console.log(`[Test Client] Task ${taskId} ${action} message:`, message)
             this.emit("message", taskId, action, message)
             break;
           case "taskCreated":
@@ -218,11 +239,10 @@ class TestClient extends EventEmitter {
             this.emit("taskTokenUsageUpdated", ...payload)
             break;
           default:
-            console.log("[Test Client] Unhandled event:", eventName, payload)
+            // console.log("[Test Client] Unhandled event:", eventName, payload) // Keep this commented out for now
         }
       }
     } catch (error) {
-      console.error("[Test Client] Failed to handle message:", error)
       this.emit("error", `Failed to handle message: ${error}`)
     }
   }
@@ -230,6 +250,7 @@ class TestClient extends EventEmitter {
   // Track command results for summary
   testResults = []
 
+  // *** FIXED sendCommand ***
   sendCommand(commandName, commandData) {
     if (!this.clientId) {
       throw new Error("Client ID not yet assigned by server. Wait for 'connect' event.")
@@ -242,23 +263,27 @@ class TestClient extends EventEmitter {
 
     const requestId = `${this.clientId}-${this.requestIdCounter++}-${Date.now()}`
 
+    // Corrected message structure
     const message = {
       type: "TaskCommand",
       origin: "client",
       clientId: this.clientId,
-      requestId: requestId,
-      data: {
+      // requestId removed from top level
+      data: { // This object is validated by taskCommandSchema
+        requestId: requestId, // requestId moved here
         commandName: commandName,
-        data: commandData === undefined ? undefined : commandData,
+        data: commandData === undefined ? undefined : commandData, // Command-specific payload
       },
     }
 
-    console.log("[Test Client] Sending command:", message)
+    // console.log("[Test Client] Sending command (raw):", JSON.stringify(message, null, 2)); // Raw log removed
     socket.emit("message", message)
-    
+
     return new Promise((resolve, reject) => {
+      // Store resolve/reject for this request
+      this.pendingRequests.set(requestId, { resolve, reject });
+
       // Add timeout
-      // Use longer timeout for task-related commands
       const taskCommands = [
         TaskCommandName.StartNewTask,
         TaskCommandName.GetMessages,
@@ -267,57 +292,19 @@ class TestClient extends EventEmitter {
       ]
       const timeoutDuration = taskCommands.includes(commandName) ? 30000 : 10000
       const timeout = setTimeout(() => {
-        // Remove the listener if timeout occurs
-        this.removeListener("commandResponse", listener)
-        this.removeListener("error", errorHandler)
-        reject(new Error(`Command ${commandName} timed out after ${timeoutDuration/1000}s`))
-      }, timeoutDuration)
-
-      // Use 'on' and manually remove the listener
-      const listener = (response) => {
-        console.log("[Test Client] Checking response match:", {
-          receivedCommandName: response.commandName,
-          expectedCommandName: commandName,
-          receivedRequestId: response.requestId,
-          expectedRequestId: requestId,
-          receivedPayload: response.payload
-        })
-
-        // Match on command name since server may not return requestId
-        // Handle special cases where we might get other responses while waiting
-        if (response.commandName === commandName ||
-            (response.commandName === 'GetConfiguration' && commandName === 'StartNewTask') ||
-            (response.commandName === 'GetMessages' && commandName === 'GetMessages')) {
-          console.log("[Test Client] Command response matched")
-          clearTimeout(timeout)
-          // Remove this specific listener
-          this.removeListener("commandResponse", listener)
-          // Track result
-          this.testResults.push({
-            command: commandName,
-            data: commandData,
-            response: response.payload,
-            success: !response.payload?.error
-          })
-          resolve(response.payload)
-        } else {
-          console.log("[Test Client] Command response did not match")
+        // Remove from pending requests if timeout occurs
+        if (this.pendingRequests.has(requestId)) {
+          reject(new Error(`Command ${commandName} timed out after ${timeoutDuration/1000}s`));
+          this.pendingRequests.delete(requestId);
         }
+      }, timeoutDuration);
+
+      // Store timeout ID with the request
+      const requestEntry = this.pendingRequests.get(requestId);
+      if (requestEntry) {
+          requestEntry.timeoutId = timeout; // Assign to correct property name
       }
-
-      // Add error handler
-      const errorHandler = (err) => {
-        console.error("[Test Client] Command error:", err)
-        clearTimeout(timeout)
-        this.removeListener("commandResponse", listener)
-        this.removeListener("error", errorHandler)
-        reject(err)
-      }
-
-      this.on("error", errorHandler)
-
-      this.on("commandResponse", listener)
-    })
+    });
   }
 
   // Print summary table for a phase
@@ -325,13 +312,13 @@ class TestClient extends EventEmitter {
     console.log(`\n=== Phase ${phase} Summary ===`)
     console.log("Command".padEnd(20) + "| Result".padEnd(10) + "| Details")
     console.log("-".repeat(50))
-    
+
     this.testResults.forEach(result => {
       const status = result.success ? "✓" : "✗"
       const details = result.success ?
         (typeof result.response === 'object' ? JSON.stringify(result.response) : result.response) :
         result.response?.error || 'Failed'
-      
+
       console.log(
         result.command.padEnd(20) +
         `| ${status}`.padEnd(10) +
@@ -345,24 +332,15 @@ class TestClient extends EventEmitter {
 }
 
 // Test data
-/* Skipping profile and config test data
-const TEST_PROFILE = "test-profile-1"
-const TEST_CONFIG = {
-  apiKey: process.env.OPENAI_API_KEY,
-  model: "gpt-4o-mini",
-  temperature: 0.7,
-  maxTokens: 4000
-}
-*/
-
-// Task test data
-const TEST_MESSAGE = "Now multiply by 10"
+// const TEST_PROFILE = "test-profile-1" // Not used currently
+// const TEST_CONFIG = { ... } // Not used currently
+const TEST_MESSAGE = "Now multiply by 10" // Restored
 
 // Test phases
-/* Skipping Phase 1 for now
+/* // Phase 1 commented out
 async function runPhase1(client) {
   console.log("\n=== Phase 1: Simple Commands ===")
-  
+
   try {
     // IsReady
     console.log("\nTesting IsReady...")
@@ -393,7 +371,7 @@ async function runPhase1(client) {
 }
 */
 
-/* Skipping Phase 2 for now
+/* // Phase 2 commented out
 async function runPhase2(client) {
   console.log("\n=== Phase 2: Configuration & Profile Commands ===")
 
@@ -441,18 +419,19 @@ async function runPhase2(client) {
 }
 */
 
-async function runPhase3(client) {
+// *** FIXED runPhase3 ***
+async function runPhase3(client) { // Restored function definition
   console.log("\n=== Phase 3: Task Management Commands ===")
-  
+
   try {
     // Get and set specific profile
     console.log("\nSetting active profile to 'default'...")
     await client.sendCommand(TaskCommandName.SetActiveProfile, "default")
-    
+
     // StartNewTask with minimal config
     console.log("\nTesting StartNewTask...")
     const taskId = await client.sendCommand(TaskCommandName.StartNewTask, {
-      configuration: undefined, // This will make the API use the active profile's settings
+      configuration: {}, // Added required configuration field
       text: "What's 2+2?",
       images: undefined
     })
@@ -519,13 +498,13 @@ async function runPhase3(client) {
   }
 }
 
-// Main test runner
+// Main test runner (Restored)
 async function runTest() {
   const client = new TestClient()
-  
+
   try {
     await client.connect()
-    
+
     // Skip Phase 1 & 2, run only Phase 3 - Task Management
     console.log("\nStarting Phase 3 - Task Management (Interactive)")
     console.log("This phase requires user interaction.")
@@ -540,10 +519,10 @@ async function runTest() {
       process.stdin.resume()
       process.stdin.once('data', onData)
     })
-    
-    await runPhase3(client)
+
+    await runPhase3(client) // Restored call
     console.log("\nPhase 3 completed successfully!")
-    
+
   } catch (err) {
     console.error("[Test] Error:", err)
   } finally {

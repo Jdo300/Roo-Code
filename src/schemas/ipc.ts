@@ -45,7 +45,7 @@ export enum TaskCommandName {
 
 // Base schema for all task commands
 const taskCommandBase = z.object({
-	requestId: z.string().optional(),
+	requestId: z.string(),
 })
 
 export const taskCommandSchema = z.discriminatedUnion("commandName", [

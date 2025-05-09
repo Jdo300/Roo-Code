@@ -88,8 +88,9 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 							const taskId = await this.startNewTask({
 								...data,
 								clientId,
+								requestId, // Pass requestId to the method
 							})
-							this.sendResponse(clientId, commandName, taskId, requestId) // Pass requestId
+							this.sendResponse(clientId, commandName, taskId, requestId)
 							break
 						case TaskCommandName.CancelTask:
 							await this.cancelTask(data, clientId)
@@ -121,51 +122,59 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 							break
 						case TaskCommandName.ClearCurrentTask:
 							this.log("[API] Handling ClearCurrentTask command")
-							await this.clearCurrentTask(data, clientId)
-							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
+							await this.clearCurrentTask(data, clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, { success: true }, requestId)
 							break
 						case TaskCommandName.CancelCurrentTask:
 							this.log("[API] Handling CancelCurrentTask command")
-							await this.cancelCurrentTask(clientId)
-							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
+							await this.cancelCurrentTask(clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, { success: true }, requestId)
 							break
 						case TaskCommandName.SendMessage:
 							this.log("[API] Handling SendMessage command")
-							await this.sendMessage(data.message, data.images, clientId)
-							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
+							await this.sendMessage(data.message, data.images, clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, { success: true }, requestId)
 							break
 						case TaskCommandName.PressPrimaryButton:
 							this.log("[API] Handling PressPrimaryButton command")
-							await this.pressPrimaryButton(clientId)
-							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
+							await this.pressPrimaryButton(clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, { success: true }, requestId)
 							break
 						case TaskCommandName.PressSecondaryButton:
 							this.log("[API] Handling PressSecondaryButton command")
-							await this.pressSecondaryButton(clientId)
-							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
+							await this.pressSecondaryButton(clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, { success: true }, requestId)
 							break
 						case TaskCommandName.SetConfiguration:
 							this.log("[API] Handling SetConfiguration command")
-							await this.setConfiguration(data, clientId)
-							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
+							await this.setConfiguration(data, clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, { success: true }, requestId)
 							break
 						case TaskCommandName.GetConfiguration:
 							this.log("[API] Handling GetConfiguration command")
-							this.sendResponse(clientId, commandName, this.getConfiguration(clientId), requestId) // Pass requestId
+							const config = this.getConfiguration(clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, config, requestId)
 							break
 						case TaskCommandName.IsReady:
 							this.log("[API] Handling IsReady command")
-							this.sendResponse(clientId, commandName, this.sidebarProvider.isViewLaunched, requestId) // Pass requestId
+							const ready = this.isReady(clientId, requestId) // Call method and pass requestId
+							this.sendResponse(clientId, commandName, ready, requestId)
 							break
 						case TaskCommandName.GetMessages:
 							this.log("[API] Handling GetMessages command")
-							const messages = this.getMessages(data, clientId)
-							this.sendResponse(clientId, commandName, messages, requestId) // Pass requestId
+							// Pass clientId and requestId to the method.
+							// The method itself will only send a response if requestId is undefined (direct call).
+							// The handler's sendResponse is the authoritative one for the command.
+							const messages = this.getMessages(data, clientId, requestId)
+							this.sendResponse(clientId, commandName, messages, requestId)
 							break
 						case TaskCommandName.GetTokenUsage:
 							this.log("[API] Handling GetTokenUsage command")
-							const usage = this.getTokenUsage(data, clientId)
-							this.sendResponse(clientId, commandName, usage, requestId) // Pass requestId
+							// Pass clientId and requestId to the method.
+							// The method itself will only send a response if requestId is undefined (direct call).
+							// The handler's sendResponse is the authoritative one for the command.
+							const usage = this.getTokenUsage(data, clientId, requestId)
+							this.sendResponse(clientId, commandName, usage, requestId)
 							break
 						case TaskCommandName.Log:
 							this.log(`[Client Log] ${data}`)
@@ -182,13 +191,13 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 							break
 						case TaskCommandName.CreateProfile:
 							this.log("[API] Handling CreateProfile command")
-							await this.createProfile(data, clientId)
-							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
+							await this.createProfile(data, clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, { success: true }, requestId)
 							break
 						case TaskCommandName.GetProfiles:
 							this.log("[API] Handling GetProfiles command")
-							const profiles = await this.getProfiles(clientId)
-							this.sendResponse(clientId, commandName, profiles, requestId) // Pass requestId
+							const profiles = await this.getProfiles(clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, profiles, requestId)
 							break
 						case TaskCommandName.SetActiveProfile:
 							this.log("[API] Handling SetActiveProfile command")
@@ -197,12 +206,13 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 							break
 						case TaskCommandName.GetActiveProfile:
 							this.log("[API] Handling GetActiveProfile command")
-							this.sendResponse(clientId, commandName, this.getActiveProfile(clientId), requestId) // Pass requestId
+							const profile = this.getActiveProfile(clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, profile, requestId)
 							break
 						case TaskCommandName.DeleteProfile:
 							this.log("[API] Handling DeleteProfile command")
-							await this.deleteProfile(data, clientId)
-							this.sendResponse(clientId, commandName, { success: true }, requestId) // Pass requestId
+							await this.deleteProfile(data, clientId, requestId) // Pass requestId to the method
+							this.sendResponse(clientId, commandName, { success: true }, requestId)
 							break
 						default:
 							const unknownCommand = command as TaskCommand
@@ -248,27 +258,32 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		}
 	}
 
-	public getMessages(taskId: string, clientId: string): void {
+	public getMessages(taskId: string, clientId: string, requestId?: string): ClineMessage[] {
 		const provider = this.taskMap.get(taskId)
-		if (provider) {
-			this.sendResponse(clientId, TaskCommandName.GetMessages, provider.messages || [])
-		} else {
-			this.sendResponse(clientId, TaskCommandName.GetMessages, [])
+		const messages = provider ? provider.messages || [] : []
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.GetMessages, messages, requestId)
 		}
+		return messages
 	}
 
-	public getTokenUsage(taskId: string, clientId: string): void {
+	public getTokenUsage(taskId: string, clientId: string, requestId?: string): TokenUsage | undefined {
 		const provider = this.taskMap.get(taskId)
+		let usage: TokenUsage | undefined = undefined
 		if (provider) {
 			const cline = provider.getCurrentCline()
 			if (cline) {
-				this.sendResponse(clientId, TaskCommandName.GetTokenUsage, getApiMetrics(cline.clineMessages))
-			} else {
-				this.sendResponse(clientId, TaskCommandName.GetTokenUsage, undefined)
+				usage = getApiMetrics(cline.clineMessages)
 			}
-		} else {
-			this.sendResponse(clientId, TaskCommandName.GetTokenUsage, undefined)
 		}
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.GetTokenUsage, usage, requestId)
+		}
+		return usage
 	}
 
 	private sendResponse(
@@ -469,69 +484,87 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		images,
 		newTab: _newTab, // Rename in destructuring, ignoring _newTab
 		clientId,
+		requestId, // Add requestId parameter
 	}: {
 		configuration?: RooCodeSettings
 		text?: string
 		images?: string[]
 		newTab?: boolean
 		clientId: string
+		requestId?: string // Add requestId to type definition
 	}): Promise<string> {
 		if (configuration) {
 			await this.sidebarProvider.updateApiConfiguration(configuration)
 		}
 		const cline = await this.sidebarProvider.initClineWithTask(text, images)
-		this.sendResponse(clientId, TaskCommandName.StartNewTask, cline.taskId)
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.StartNewTask, cline.taskId, requestId)
+		}
 		return cline.taskId
 	}
 
-	public async resumeTask(taskId: string, clientId: string): Promise<void> {
+	public async resumeTask(taskId: string, _clientId: string): Promise<void> {
 		const task = await this.sidebarProvider.getTaskWithId(taskId)
 		if (!task || !task.historyItem) {
 			throw new Error(`Task with ID ${taskId} not found or has no history item.`)
 		}
 		await this.sidebarProvider.initClineWithHistoryItem(task.historyItem)
-		this.sendResponse(clientId, TaskCommandName.ResumeTask, true)
+		// No sendResponse here, handled by command handler
 		return
 	}
 
-	public async isTaskInHistory(taskId: string, clientId: string): Promise<boolean> {
+	public async isTaskInHistory(taskId: string, _clientId: string): Promise<boolean> {
 		const task = await this.sidebarProvider.getTaskWithId(taskId)
 		const result = !!task
 		// Send response back to the specific client who asked
-		this.sendResponse(clientId, TaskCommandName.IsTaskInHistory, result)
+		// No sendResponse here, handled by command handler
 		return result
 	}
 
-	public getCurrentTaskStack(clientId: string): string[] {
+	public getCurrentTaskStack(_clientId: string): string[] {
 		const stack = this.sidebarProvider.getCurrentTaskStack()
-		this.sendResponse(clientId, TaskCommandName.GetCurrentTaskStack, stack)
 		return stack
 	}
 
-	public async clearCurrentTask(lastMessage: string | undefined, clientId: string): Promise<void> {
+	public async clearCurrentTask(
+		lastMessage: string | undefined,
+		clientId: string,
+		requestId?: string,
+	): Promise<void> {
+		// Add requestId parameter
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (currentCline) {
 			await this.sidebarProvider.removeClineFromStack()
 			if (lastMessage) {
 				this.log(`[API] clearCurrentTask called with lastMessage: ${lastMessage}.`)
 			}
-			this.sendResponse(clientId, TaskCommandName.ClearCurrentTask, true)
+			// If called directly (not via command handler), requestId will be undefined.
+			// The command handler will always send its own response.
+			if (!requestId && clientId) {
+				this.sendResponse(clientId, TaskCommandName.ClearCurrentTask, true, requestId)
+			}
 		}
 	}
 
-	public async cancelCurrentTask(clientId: string): Promise<void> {
+	public async cancelCurrentTask(clientId: string, requestId?: string): Promise<void> {
+		// Add requestId parameter
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (currentCline) {
 			await this.sidebarProvider.cancelTask()
-			this.sendResponse(clientId, TaskCommandName.CancelCurrentTask, true)
+			// If called directly (not via command handler), requestId will be undefined.
+			// The command handler will always send its own response.
+			if (!requestId && clientId) {
+				this.sendResponse(clientId, TaskCommandName.CancelCurrentTask, true, requestId)
+			}
 		}
 	}
 
-	public async cancelTask(taskId: string, clientId: string): Promise<void> {
+	public async cancelTask(taskId: string, _clientId: string): Promise<void> {
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (currentCline?.taskId === taskId) {
 			await this.sidebarProvider.cancelTask()
-			this.sendResponse(clientId, TaskCommandName.CancelTask, true)
 		} else {
 			this.log(
 				`[API] cancelTask called for non-current task ${taskId}. Only current task cancellation is supported directly.`,
@@ -545,31 +578,46 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		message: string | undefined,
 		images: string[] | undefined,
 		clientId: string,
+		requestId?: string, // Add requestId parameter
 	): Promise<void> {
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (!currentCline) {
 			throw new Error("No active task to send message to.")
 		}
 		await currentCline.handleWebviewAskResponse("messageResponse", message, images)
-		this.sendResponse(clientId, TaskCommandName.SendMessage, true)
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.SendMessage, true, requestId)
+		}
 	}
 
-	public async pressPrimaryButton(clientId: string): Promise<void> {
+	public async pressPrimaryButton(clientId: string, requestId?: string): Promise<void> {
+		// Add requestId parameter
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (!currentCline) {
 			throw new Error("No active task to press primary button on.")
 		}
 		await currentCline.handleWebviewAskResponse("yesButtonClicked")
-		this.sendResponse(clientId, TaskCommandName.PressPrimaryButton, true)
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.PressPrimaryButton, true, requestId)
+		}
 	}
 
-	public async pressSecondaryButton(clientId: string): Promise<void> {
+	public async pressSecondaryButton(clientId: string, requestId?: string): Promise<void> {
+		// Add requestId parameter
 		const currentCline = this.sidebarProvider.getCurrentCline()
 		if (!currentCline) {
 			throw new Error("No active task to press secondary button on.")
 		}
 		await currentCline.handleWebviewAskResponse("noButtonClicked")
-		this.sendResponse(clientId, TaskCommandName.PressSecondaryButton, true)
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.PressSecondaryButton, true, requestId)
+		}
 	}
 
 	// --- Configuration & Profiles ---
@@ -577,17 +625,27 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		const globalState = this.sidebarProvider.contextProxy.getValues()
 		const providerSettings = this.sidebarProvider.contextProxy.getProviderSettings()
 		const config = { ...globalState, ...providerSettings } as RooCodeSettings
-		this.sendResponse(clientId, TaskCommandName.GetConfiguration, config, requestId) // Use new sendResponse signature
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.GetConfiguration, config, requestId)
+		}
 		return config
 	}
 
-	public async setConfiguration(values: RooCodeSettings, clientId: string): Promise<void> {
+	public async setConfiguration(values: RooCodeSettings, clientId: string, requestId?: string): Promise<void> {
+		// Add requestId parameter
 		await this.sidebarProvider.updateApiConfiguration(values)
-		this.sendResponse(clientId, TaskCommandName.SetConfiguration, true) // Acknowledge success
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.SetConfiguration, true, requestId)
+		}
 	}
 
-	public async createProfile(name: string, clientId: string): Promise<string> {
-		const config = this.getConfiguration(clientId) // Pass clientId to getConfiguration
+	public async createProfile(name: string, clientId: string, requestId?: string): Promise<string> {
+		// Add requestId parameter
+		const config = this.getConfiguration(clientId, requestId) // Pass clientId and requestId to getConfiguration
 		config.listApiConfigMeta = config.listApiConfigMeta || []
 		// Check if profile already exists
 		if (config.listApiConfigMeta.some((p) => p.name === name)) {
@@ -596,21 +654,34 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 
 		config.listApiConfigMeta.push({ id: crypto.randomUUID(), name }) // Use UUID for ID
 		await this.sidebarProvider.updateApiConfiguration(config) // This saves the updated list
-		this.sendResponse(clientId, TaskCommandName.CreateProfile, name) // Respond with the created profile name
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.CreateProfile, name, requestId)
+		}
 		return name
 	}
 
-	public getProfiles(clientId: string): string[] {
-		const config = this.getConfiguration(clientId) // Pass clientId to getConfiguration
+	public getProfiles(clientId: string, requestId?: string): string[] {
+		// Add requestId parameter
+		const config = this.getConfiguration(clientId, requestId) // Pass clientId and requestId to getConfiguration
 		const profiles = (config.listApiConfigMeta || []).map((profile) => profile.name)
-		this.sendResponse(clientId, TaskCommandName.GetProfiles, profiles)
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.GetProfiles, profiles, requestId)
+		}
 		return profiles
 	}
 
 	public getActiveProfile(clientId: string, requestId?: string): string | undefined {
 		const config = this.getConfiguration(clientId, requestId) // Pass clientId and requestId to getConfiguration
 		const activeProfile = config.currentApiConfigName
-		this.sendResponse(clientId, TaskCommandName.GetActiveProfile, activeProfile, requestId) // Use new sendResponse signature
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.GetActiveProfile, activeProfile, requestId)
+		}
 		return activeProfile
 	}
 
@@ -622,11 +693,11 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		}
 		config.currentApiConfigName = name
 		await this.sidebarProvider.updateApiConfiguration(config)
-		this.sendResponse(clientId, TaskCommandName.SetActiveProfile, true) // Acknowledge success
 	}
 
-	public async deleteProfile(name: string, clientId: string): Promise<void> {
-		const config = this.getConfiguration(clientId)
+	public async deleteProfile(name: string, clientId: string, requestId?: string): Promise<void> {
+		// Add requestId parameter
+		const config = this.getConfiguration(clientId, requestId) // Pass clientId and requestId
 		const initialLength = (config.listApiConfigMeta || []).length
 		config.listApiConfigMeta = (config.listApiConfigMeta || []).filter((p) => p.name !== name)
 		if (config.listApiConfigMeta.length === initialLength) {
@@ -637,13 +708,22 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 			config.currentApiConfigName = config.listApiConfigMeta?.[0]?.name || "default"
 		}
 		await this.sidebarProvider.updateApiConfiguration(config)
-		this.sendResponse(clientId, TaskCommandName.DeleteProfile, true) // Acknowledge success
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.DeleteProfile, true, requestId)
+		}
 	}
 
 	// --- Status ---
-	public isReady(clientId: string): boolean {
+	public isReady(clientId: string, requestId?: string): boolean {
+		// Add requestId parameter
 		const ready = this.sidebarProvider.isViewLaunched
-		this.sendResponse(clientId, TaskCommandName.IsReady, ready)
+		// If called directly (not via command handler), requestId will be undefined.
+		// The command handler will always send its own response.
+		if (!requestId && clientId) {
+			this.sendResponse(clientId, TaskCommandName.IsReady, ready, requestId)
+		}
 		return ready
 	}
 }

@@ -622,12 +622,12 @@ interface RooCodeAPI extends EventEmitter<RooCodeEvents> {
 	 * Retrieves messages for a given task ID.
 	 * @param taskId The ID of the task.
 	 */
-	getMessages(taskId: string): void
+	getMessages(taskId: string, clientId: string, requestId?: string): ClineMessage[]
 	/**
 	 * Retrieves token usage for a given task ID.
 	 * @param taskId The ID of the task.
 	 */
-	getTokenUsage(taskId: string): void
+	getTokenUsage(taskId: string, clientId: string, requestId?: string): TokenUsage | undefined
 }
 
 export {

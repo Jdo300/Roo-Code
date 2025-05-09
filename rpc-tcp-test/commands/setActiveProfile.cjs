@@ -1,8 +1,12 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+/** @typedef {import('../../out/src/schemas/ipc').TaskCommandName} TaskCommandNameType */
+
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
 async function testSetActiveProfile() {
   const client = new IpcClient();
   let exitCode = 0;
+  /** @type {TaskCommandNameType} */
   const commandToTest = TaskCommandName.SetActiveProfile;
   const profileToActivate = 'default'; // Or use a known existing profile
   console.log(`[Test Script: ${commandToTest}] Starting test to activate profile: ${profileToActivate}`);

@@ -1,4 +1,8 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+
+/** @typedef {import('../../out/src/schemas/ipc').TaskCommandName} TaskCommandNameEnum */
+
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
 async function testCancelTask() {
   const client = new IpcClient();
@@ -20,24 +24,27 @@ async function testCancelTask() {
 
   try {
     console.log(`[Test Script: ${commandToTest}] Connecting to server...`);
+    /** @type {{clientId: string, serverVersion: string}} */
     const connectionData = await client.connect();
     console.log(`[Test Script: ${commandToTest}] Connected. Client ID: ${connectionData.clientId}`);
 
     console.log(`[Test Script: ${commandToTest}] Sending command to cancel task: ${taskIdToCancel}`);
+    /** @type {undefined} */ // Response should be undefined
     const response = await client.sendCommand(commandToTest, taskIdToCancel);
     console.log(`[Test Script: ${commandToTest}] Response received:`, response);
 
     // Example assertion: Check if the command executed without an error response.
-    // The actual response might be a success status or undefined.
-    if (response && typeof response === 'object' && response.error) {
-      console.error(`[Test Script: ${commandToTest}] Test FAILED or task did not exist. Server returned an error:`, response.error);
-      exitCode = 1;
+    // For CancelTask, an undefined response is success.
+    if (response === undefined) {
+        console.log(`[Test Script: ${commandToTest}] Test PASSED (command sent). Cancellation initiated for task: ${taskIdToCancel}.`);
     } else {
-      console.log(`[Test Script: ${commandToTest}] Test PASSED (command sent). Cancellation initiated for task: ${taskIdToCancel}.`);
-      // Check for specific success indicators if applicable, e.g. response.success === true
+      // This case indicates an unexpected response format if sendCommand didn't reject for an error.
+      console.warn(`[Test Script: ${commandToTest}] Command sent, but response was not undefined as expected. Response:`, response);
+      exitCode = 1; // Treat unexpected non-undefined response as a failure.
     }
 
   } catch (error) {
+    // @ts-ignore
     console.warn(`[Test Script: ${commandToTest}] Error during test (this might be expected if taskId is invalid/not found):`, error.message || error);
     // If using the placeholder, an error is likely.
     if (taskIdToCancel !== 'placeholder-task-id-to-cancel') {
@@ -51,7 +58,8 @@ async function testCancelTask() {
       await client.disconnect();
       console.log(`[Test Script: ${commandToTest}] Disconnected.`);
     } catch (disconnectError) {
-      console.error(`[Test Script: ${commandToTest}] Error during disconnect:`, disconnectError);
+      // @ts-ignore
+      console.error(`[Test Script: ${commandToTest}] Error during disconnect:`, disconnectError.message || disconnectError);
       if (exitCode === 0) exitCode = 1;
     }
     console.log(`[Test Script: ${commandToTest}] Exiting with code ${exitCode}.`);

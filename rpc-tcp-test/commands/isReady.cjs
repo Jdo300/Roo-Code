@@ -1,8 +1,13 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+
+/** @typedef {import('../../out/src/schemas/ipc').TaskCommandName} TaskCommandNameEnum */
+
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
 async function testIsReady() {
   const client = new IpcClient();
   let exitCode = 0;
+  // Use the runtime TaskCommandName for logging
   console.log(`[Test Script: ${TaskCommandName.IsReady}] Starting test...`);
 
   client.on('error', (err) => {
@@ -12,10 +17,13 @@ async function testIsReady() {
 
   try {
     console.log(`[Test Script: ${TaskCommandName.IsReady}] Connecting to server...`);
+    /** @type {{clientId: string, serverVersion: string}} */
     const connectionData = await client.connect();
     console.log(`[Test Script: ${TaskCommandName.IsReady}] Connected. Client ID: ${connectionData.clientId}`);
 
     console.log(`[Test Script: ${TaskCommandName.IsReady}] Sending command...`);
+    // Use the imported TaskCommandName enum for the command
+    /** @type {any} */ // Assuming response can be varied, adjust if a specific type is expected
     const response = await client.sendCommand(TaskCommandName.IsReady);
     console.log(`[Test Script: ${TaskCommandName.IsReady}] Response received:`, response);
 
@@ -29,6 +37,7 @@ async function testIsReady() {
     }
 
   } catch (error) {
+    // @ts-ignore
     console.error(`[Test Script: ${TaskCommandName.IsReady}] Error during test:`, error.message || error);
     exitCode = 1;
   } finally {
@@ -37,7 +46,8 @@ async function testIsReady() {
       await client.disconnect(); // Assuming disconnect might be async or involve ipc operations
       console.log(`[Test Script: ${TaskCommandName.IsReady}] Disconnected.`);
     } catch (disconnectError) {
-      console.error(`[Test Script: ${TaskCommandName.IsReady}] Error during disconnect:`, disconnectError);
+      // @ts-ignore
+      console.error(`[Test Script: ${TaskCommandName.IsReady}] Error during disconnect:`, disconnectError.message || disconnectError);
       if (exitCode === 0) exitCode = 1; // Ensure failure if disconnect errors
     }
     console.log(`[Test Script: ${TaskCommandName.IsReady}] Exiting with code ${exitCode}.`);

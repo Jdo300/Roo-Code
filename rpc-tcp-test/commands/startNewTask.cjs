@@ -1,15 +1,21 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+/** @typedef {import('../../out/src/schemas/ipc').TaskCommandName} TaskCommandNameType */
+// StartTaskPayload and Configuration typedefs removed due to persistent resolution issues.
+
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
 async function testStartNewTask() {
   const client = new IpcClient();
   let exitCode = 0;
+  /** @type {TaskCommandNameType} */
   const commandToTest = TaskCommandName.StartNewTask;
   
   // Define the payload for starting a new task
+  // Type annotation removed for startTaskPayload due to JSDoc import issues
   const startTaskPayload = {
     // Using an empty object; assumes server handles defaults or schema allows it.
     // If needed, provide a minimal valid RooCodeSettings object here.
-    configuration: {}, 
+    configuration: ({}), // Type cast removed
     text: process.argv[2] || "What is the capital of France?", // Initial prompt
     // images: [], // Optional: Add base64 image strings
     // newTab: false // Optional: Specify if it should open in a new tab/context
@@ -28,7 +34,7 @@ async function testStartNewTask() {
 
     console.log(`[Test Script: ${commandToTest}] Sending command with payload:`, JSON.stringify(startTaskPayload));
     // The response should be the taskId of the newly created task
-    const responseTaskId = await client.sendCommand(commandToTest, startTaskPayload); 
+    const responseTaskId = await client.sendCommand(commandToTest, startTaskPayload);
     console.log(`[Test Script: ${commandToTest}] Response received (taskId):`, responseTaskId);
 
     // Example assertion: Check if the response is a non-empty string (the taskId).

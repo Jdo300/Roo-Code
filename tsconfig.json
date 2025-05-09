@@ -20,7 +20,9 @@
 		"useDefineForClassFields": true,
 		"useUnknownInCatchVariables": false,
 		"baseUrl": ".",
-		"paths": {}
+		"paths": {},
+		"declaration": true,
+		"declarationDir": "./out"
 	},
 	"include": ["src/**/*", "scripts/**/*", ".changeset/**/*"],
 	"exclude": ["node_modules", ".vscode-test", "webview-ui"]

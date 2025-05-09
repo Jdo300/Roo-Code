@@ -1,16 +1,24 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+/** @typedef {import('../../out/src/schemas/ipc').TaskCommandName} TaskCommandNameType */
+// ConfigurationType typedef removed due to persistent resolution issues with RooCodeSettings
+
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
 async function testSetConfiguration() {
   const client = new IpcClient();
   let exitCode = 0;
+  /** @type {TaskCommandNameType} */
   const commandToTest = TaskCommandName.SetConfiguration;
   console.log(`[Test Script: ${commandToTest}] Starting test...`);
 
   // Define a sample configuration to set
+  // Type annotation removed for sampleConfiguration due to JSDoc import issues
   const sampleConfiguration = {
     model: "test-model-from-script",
     temperature: 0.75,
+    // @ts-ignore - Allow custom setting for test
     customSetting: true,
+    // @ts-ignore - Allow custom setting for test
     nested: {
       value1: 123,
       value2: "test"

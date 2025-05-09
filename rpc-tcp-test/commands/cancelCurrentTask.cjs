@@ -1,4 +1,8 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+
+/** @typedef {import('../../out/src/schemas/ipc').TaskCommandName} TaskCommandNameEnum */
+
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
 async function testCancelCurrentTask() {
   const client = new IpcClient();
@@ -13,6 +17,7 @@ async function testCancelCurrentTask() {
 
   try {
     console.log(`[Test Script: ${commandToTest}] Connecting to server...`);
+    /** @type {{clientId: string, serverVersion: string}} */
     const connectionData = await client.connect();
     console.log(`[Test Script: ${commandToTest}] Connected. Client ID: ${connectionData.clientId}`);
 
@@ -21,6 +26,7 @@ async function testCancelCurrentTask() {
     console.warn(`[Test Script: ${commandToTest}] Note: This command is more meaningful if a task is currently active on the server.`);
     
     console.log(`[Test Script: ${commandToTest}] Sending command...`);
+    /** @type {undefined} */ // Response should be undefined
     const response = await client.sendCommand(commandToTest); // No commandData needed
     console.log(`[Test Script: ${commandToTest}] Response received:`, response);
 
@@ -34,6 +40,7 @@ async function testCancelCurrentTask() {
 
   } catch (error) {
     // If a task is not active, the server might return an error. This is a valid test outcome.
+    // @ts-ignore
     console.warn(`[Test Script: ${commandToTest}] Command execution resulted in:`, error.message || error);
     // Depending on expected behavior (e.g., should it error if no task active?),
     // this might not always be a "failure" of the command itself.
@@ -45,7 +52,8 @@ async function testCancelCurrentTask() {
       await client.disconnect();
       console.log(`[Test Script: ${commandToTest}] Disconnected.`);
     } catch (disconnectError) {
-      console.error(`[Test Script: ${commandToTest}] Error during disconnect:`, disconnectError);
+      // @ts-ignore
+      console.error(`[Test Script: ${commandToTest}] Error during disconnect:`, disconnectError.message || disconnectError);
       if (exitCode === 0) exitCode = 1;
     }
     console.log(`[Test Script: ${commandToTest}] Exiting with code ${exitCode}.`);

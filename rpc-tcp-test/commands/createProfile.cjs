@@ -1,9 +1,11 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
-import { randomBytes } from 'crypto';
+// @ts-check
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
+const { randomBytes } = require('crypto');
 
 async function testCreateProfile() {
   const client = new IpcClient();
   let exitCode = 0;
+  /** @type {string} */
   const commandToTest = TaskCommandName.CreateProfile;
   // Generate a unique profile name for each test run to avoid conflicts
   const profileNameToCreate = `test-profile-${randomBytes(4).toString('hex')}`;

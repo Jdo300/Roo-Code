@@ -6,6 +6,7 @@ const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 async function testCancelTask() {
   const client = new IpcClient();
   let exitCode = 0;
+  /** @type {string} */
   const commandToTest = TaskCommandName.CancelTask;
   
   // IMPORTANT: Replace with a valid taskId from an active or existing task for this test to be meaningful.

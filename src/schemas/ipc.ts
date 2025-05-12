@@ -10,6 +10,7 @@ export const ackSchema = z.object({
 	clientId: z.string(),
 	pid: z.number(),
 	ppid: z.number(),
+	serverVersion: z.string().optional(), // Added serverVersion as optional
 })
 
 export type Ack = z.infer<typeof ackSchema>

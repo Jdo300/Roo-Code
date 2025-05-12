@@ -1,9 +1,11 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
-import { randomBytes } from 'crypto';
+// @ts-check
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
+const { randomBytes } = require('crypto');
 
 async function testDeleteProfile() {
   const client = new IpcClient();
   let exitCode = 0;
+  /** @type {string} */
   const commandToTest = TaskCommandName.DeleteProfile;
   // For this test, we'll attempt to delete a uniquely named profile.
   // In a real test suite, you'd create this profile first.

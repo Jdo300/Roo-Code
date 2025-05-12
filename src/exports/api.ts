@@ -61,9 +61,10 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		this.registerListeners(this.sidebarProvider)
 
 		if (ipcConfig) {
+			const extensionVersion = this.context.extension.packageJSON.version || "unknown"
 			const ipcOptions = ipcConfig.tcpPort
-				? { host: ipcConfig.tcpHost || "localhost", port: ipcConfig.tcpPort }
-				: { socketPath: ipcConfig.socketPath }
+				? { host: ipcConfig.tcpHost || "localhost", port: ipcConfig.tcpPort, serverVersion: extensionVersion }
+				: { socketPath: ipcConfig.socketPath, serverVersion: extensionVersion }
 
 			// Create a logger that writes to the output window
 			const ipcLogger = (...args: unknown[]) => {

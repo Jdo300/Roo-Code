@@ -21,9 +21,10 @@ export class API extends EventEmitter<RooCodeEvents> {
 		super()
 
 		if (ipcConfig) {
+			const serverVersion = "0.0.0-mock"
 			const ipcOptions = ipcConfig.tcpPort
-				? { host: ipcConfig.tcpHost || "localhost", port: ipcConfig.tcpPort }
-				: { socketPath: ipcConfig.socketPath }
+				? { host: ipcConfig.tcpHost || "localhost", port: ipcConfig.tcpPort, serverVersion }
+				: { socketPath: ipcConfig.socketPath, serverVersion }
 
 			const ipcLogger = (...args: unknown[]) => {
 				console.log("[IPC]", ...args)

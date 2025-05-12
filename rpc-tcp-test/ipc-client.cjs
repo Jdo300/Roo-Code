@@ -3,8 +3,8 @@
 /** @typedef {import('../out/src/schemas/ipc').TaskCommandName} TaskCommandNameEnum */
 
 const { EventEmitter } = require("events");
-const ipc = require("node-ipc");
-
+const ipc = require('node-ipc').default; // As per official npm docs for v10+ commonjs
+ 
 const TaskCommandName = {
     StartNewTask: "StartNewTask",
     CancelTask: "CancelTask",
@@ -59,16 +59,16 @@ class IpcClient extends EventEmitter {
       const connectionTimeout = setTimeout(() => {
         reject(new Error(`[IpcClient] Connection timeout after 10s to ${host}:${port}`));
       }, 10000);
-
+ 
       ipc.config.id = `ipc-client-${Date.now()}`; // Unique ID for multiple clients
       ipc.config.retry = 1500;
       ipc.config.maxRetries = 3;
       ipc.config.silent = true;
       ipc.config.sync = false; // Explicitly false for TCP client
-      ipc.config.unlink = false; // Not relevant for TCP
-      ipc.config.appspace = "";
-      ipc.config.socketRoot = "";
-      ipc.config.stopRetrying = false; // Allow retries as configured
+      // ipc.config.unlink = false; // Not relevant for TCP - Test: Commented out
+      // ipc.config.appspace = ""; // Test: Commented out
+      // ipc.config.socketRoot = ""; // Test: Commented out
+      // ipc.config.stopRetrying = false; // Allow retries as configured - Test: Commented out
       // ipc.config.logger = console.log; // Optional: enable for debugging ipc library itself
 
       ipc.connectToNet("roo-tcp-server", host, port, () => {
@@ -206,8 +206,9 @@ class IpcClient extends EventEmitter {
     if (!this.clientId) {
       return Promise.reject(new Error("[IpcClient] Client ID not yet assigned. Connect first."));
     }
-    if (!this.socket || !this.socket.writable) { // Check if socket is writable
-      return Promise.reject(new Error("[IpcClient] Not connected to server or socket not writable."));
+    // if (!this.socket || !this.socket.writable) { // Check if socket is writable - Temporarily remove .writable check
+    if (!ipc.of['roo-tcp-server']) { // More direct check on the object used for emit
+      return Promise.reject(new Error("[IpcClient] Not connected to server (ipc.of['roo-tcp-server'] is falsy)."));
     }
 
     const requestId = `${this.clientId}-${this.requestIdCounter++}-${Date.now()}`;
@@ -223,8 +224,9 @@ class IpcClient extends EventEmitter {
     };
 
     // console.log(`[IpcClient] Sending command: ${commandName} (reqId: ${requestId})`, commandData);
-    // For TCP, node-ipc expects a string or buffer. Server side expects newline-terminated JSON strings.
-    this.socket.emit(JSON.stringify(message) + '\n');
+    // Server expects an object for 'message' events, similar to how it sends the Ack.
+    // The old client also used this pattern: ipc.of.world.emit("message", messageObject)
+    ipc.of['roo-tcp-server'].emit('message', message);
 
     return new Promise((resolve, reject) => {
       const timeoutDuration = [

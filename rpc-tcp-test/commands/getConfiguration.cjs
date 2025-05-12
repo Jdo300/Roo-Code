@@ -6,6 +6,7 @@ const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 async function testGetConfiguration() {
   const client = new IpcClient();
   let exitCode = 0;
+  /** @type {string} */
   const commandToTest = TaskCommandName.GetConfiguration;
   console.log(`[Test Script: ${commandToTest}] Starting test...`);
 

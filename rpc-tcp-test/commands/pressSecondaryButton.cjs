@@ -1,9 +1,11 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
-async function testPressPrimaryButton() {
+async function testPressSecondaryButton() {
   const client = new IpcClient();
   let exitCode = 0;
-  const commandToTest = TaskCommandName.PressPrimaryButton;
+  /** @type {string} */
+  const commandToTest = TaskCommandName.PressSecondaryButton;
   console.log(`[Test Script: ${commandToTest}] Starting test...`);
 
   client.on('error', (err) => {
@@ -34,7 +36,7 @@ async function testPressPrimaryButton() {
     console.warn(`[Test Script: ${commandToTest}] Command execution resulted in:`, error.message || error);
     // This might be expected if no UI is awaiting a button press.
     // For now, treating errors as potential issues.
-    // exitCode = 1; 
+    // exitCode = 1;
   } finally {
     console.log(`[Test Script: ${commandToTest}] Disconnecting...`);
     try {
@@ -49,4 +51,4 @@ async function testPressPrimaryButton() {
   }
 }
 
-testPressPrimaryButton();
+testPressSecondaryButton();

@@ -1,35 +1,41 @@
-# Active Context
+# Active Context: IPC Command Testing
 
 ## Current Task
 
-Implementing and testing RPC server functionality for Roo Code extension, specifically focusing on message streaming behavior over IPC.
+Complete the final remaining scenarios from the `rpc-tcp-test/commands/README.md` test plan to get a full overview of IPC command status.
 
-## Recent Changes
+## Recent Changes & Findings
 
-1. **New IPC Testing Framework Implemented:**
-    - Reusable client library: [`rpc-tcp-test/ipc-client.mjs`](rpc-tcp-test/ipc-client.mjs).
-    - Individual command scripts: [`rpc-tcp-test/commands/`](rpc-tcp-test/commands/).
-    - Event monitor: [`rpc-tcp-test/commands/monitorTaskEvents.mjs`](rpc-tcp-test/commands/monitorTaskEvents.mjs).
-    - Documentation: [`rpc-tcp-test/commands/README.md`](rpc-tcp-test/commands/README.md).
-2. **Attempted Test Suite Execution & Reversion:** Encountered significant TypeScript compatibility issues when trying to run the new `.mjs` test suite. Changes made to address these were reverted to maintain plugin stability. The test suite files remain, but are currently unusable due to these TS issues.
-3. Previous work on delta streaming (`src/exports/api.ts`) and `requestId` handling remains.
-4. Extension has been recompiled multiple times during previous debugging efforts.
+- The IPC test suite in `rpc-tcp-test/` is fully converted to `.cjs` (CommonJS).
+- **Phases 1-5 Testing (Most Commands):** Completed. Identified several functional failures and test script issues.
+    - **Functional Failures Noted:** `ResumeTask`, `Log` (timeout), `IsTaskInHistory`, `GetTokenUsage`.
+    - **Test Script Issues Noted:** `SendMessage` (arg parsing), `PressPrimaryButton`/`PressSecondaryButton` (assertion mismatch), general script reliance on hardcoded values.
+    - **Server-Side Bug (Deferred Fix):** `CancelCurrentTask` state update timing.
+    - **UI Sync Issue (Deferred Fix):** `setActiveProfile`.
+- **Remaining Tests from README:** `cancelTask.cjs <taskId>`, `closeTask.cjs <taskId>`, and a specific sequence for `clearCurrentTask.cjs`.
 
-## Next Steps
+## Next Steps (Revised Priority)
 
-1. **Research Alternative Test Suite Approaches:**
-    - Investigate using CommonJS (`.cjs`) for the Node.js test scripts in [`rpc-tcp-test/`](rpc-tcp-test/) to potentially avoid TypeScript compilation conflicts with the main plugin.
-    - Explore the feasibility of a Python-based IPC client and test scripts, including how to ensure compatibility with the `node-ipc` message framing over TCP.
-    - The goal is to find a solution with minimal impact on the existing plugin's TypeScript build system.
-2. **Implement Recommended Test Suite Solution:** Based on research findings, implement the chosen approach for the test suite.
-3. **Systematic IPC Command Testing:** Once a stable test suite is in place, systematically test all IPC commands.
-4. **Debug Failing Commands:** Address any issues found during testing.
-5. **Verify Delta Streaming:** After basic commands are stable, verify delta streaming.
+1.  **Execute Remaining IPC Command Tests:**
+    - Run `cancelTask.cjs <taskId>` (requires starting a task first).
+    - Run `closeTask.cjs <taskId>` (requires starting a task first).
+    - Run the sequence: `startNewTask.cjs "Task for clear"`, then `clearCurrentTask.cjs "Clearing this task"`, then `getCurrentTaskStack.cjs`.
+    - Log results.
+2.  **Address Critical Bugs (After Full Test Suite Run):**
+    - Prioritize fixing: `ResumeTask`, `Log` (timeout), `IsTaskInHistory`, `GetTokenUsage`.
+    - Then address `CancelCurrentTask` server-side logic.
+    - Re-run relevant test sequences to verify fixes.
+3.  **Improve Test Scripts (Address Phase 2 Findings - Lower Priority):**
+    - Modify test scripts to accept and use command-line arguments.
+    - Fix assertion issues (`PressButton` scripts) and argument parsing (`SendMessage`).
+4.  **Investigate UI Synchronization Issue (`setActiveProfile` - Lower Priority):**
+    - Debug the disconnect between server state and UI updates.
+5.  **Verify Delta Streaming (Lowest Priority):**
+    - Once basic command functionality is robust and critical bugs are fixed, verify delta streaming.
 
 ## Current Status
 
-- The new IPC testing framework structure ([`rpc-tcp-test/ipc-client.mjs`](rpc-tcp-test/ipc-client.mjs), [`rpc-tcp-test/commands/`](rpc-tcp-test/commands/)) is in place but unusable in its current `.mjs` form due to TypeScript conflicts.
-- The old `test-ipc-handler.mjs` is superseded.
-- RPC server logic for delta streaming in `src/exports/api.ts` is present but unverified.
-- **Primary Focus:** Researching and deciding on a less disruptive approach for the IPC test suite (e.g., `.cjs` or Python) to enable reliable testing.
-- Systematic testing and delta streaming verification are blocked until a stable and usable test suite solution is implemented.
+- IPC testing framework is `.cjs`. Most commands have been tested, revealing several issues.
+- **Primary Focus:** Execute the final few command scenarios from the `README.md`.
+- Fixing identified bugs and improving test scripts will follow the full test run.
+- Delta streaming verification is paused.

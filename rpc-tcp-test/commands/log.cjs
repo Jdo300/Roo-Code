@@ -1,15 +1,12 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
-async function testSendMessage() {
+async function testLog() {
   const client = new IpcClient();
   let exitCode = 0;
-  const commandToTest = TaskCommandName.SendMessage;
-  
-  // Define the message payload
-  const messagePayload = {
-    message: process.argv[2] || "Hello from the SendMessage test script!",
-    // images: [] // Optional: Add base64 image strings here for testing
-  };
+  /** @type {string} */
+  const commandToTest = TaskCommandName.Log;
+  const messageToLog = process.argv[2] || `Test log message from client script at ${new Date().toISOString()}`;
   
   console.log(`[Test Script: ${commandToTest}] Starting test...`);
   
@@ -22,23 +19,23 @@ async function testSendMessage() {
     const connectionData = await client.connect();
     console.log(`[Test Script: ${commandToTest}] Connected. Client ID: ${connectionData.clientId}`);
 
-    console.warn(`[Test Script: ${commandToTest}] Note: This command requires a task to be active on the server to receive the message.`);
-    console.log(`[Test Script: ${commandToTest}] Sending command with payload:`, JSON.stringify(messagePayload));
-    const response = await client.sendCommand(commandToTest, messagePayload);
+    console.log(`[Test Script: ${commandToTest}] Sending command to log message: "${messageToLog}"`);
+    const response = await client.sendCommand(commandToTest, messageToLog);
     console.log(`[Test Script: ${commandToTest}] Response received:`, response);
 
     // Example assertion: Check if the command executed without an error response.
+    // The actual response might be undefined or a simple success status.
     if (response && typeof response === 'object' && response.error) {
-      console.error(`[Test Script: ${commandToTest}] Test FAILED or no active task. Server returned an error:`, response.error);
+      console.error(`[Test Script: ${commandToTest}] Test FAILED. Server returned an error:`, response.error);
       exitCode = 1;
     } else {
-      console.log(`[Test Script: ${commandToTest}] Test PASSED (command sent). Message sent to server.`);
+      console.log(`[Test Script: ${commandToTest}] Test PASSED (command sent). Log message sent to server.`);
       // Check for specific success indicators if applicable
     }
 
   } catch (error) {
-    console.warn(`[Test Script: ${commandToTest}] Error during test (this might be expected if no task is active):`, error.message || error);
-    // exitCode = 1; // Treat error as potential issue for now
+    console.error(`[Test Script: ${commandToTest}] Error during test:`, error.message || error);
+    exitCode = 1;
   } finally {
     console.log(`[Test Script: ${commandToTest}] Disconnecting...`);
     try {
@@ -53,4 +50,4 @@ async function testSendMessage() {
   }
 }
 
-testSendMessage();
+testLog();

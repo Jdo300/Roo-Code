@@ -21,17 +21,22 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 	private readonly _socketPath?: string
 	private readonly _host?: string
 	private readonly _port?: number | string
+	private readonly _serverVersion: string // Added
 	private readonly _log: (...args: unknown[]) => void
 	private readonly _clients: Map<string, Socket>
 
 	private _isListening = false
 
-	constructor(options: { socketPath?: string; host?: string; port?: number | string }, log = console.log) {
+	constructor(
+		options: { socketPath?: string; host?: string; port?: number | string; serverVersion: string },
+		log = console.log,
+	) {
 		super()
 
 		this._socketPath = options.socketPath
 		this._host = options.host
 		this._port = options.port
+		this._serverVersion = options.serverVersion // Added
 		this._log = log
 		this._clients = new Map()
 
@@ -77,7 +82,7 @@ export class IpcServer extends EventEmitter<IpcServerEvents> {
 		this.send(socket, {
 			type: IpcMessageType.Ack,
 			origin: IpcOrigin.Server,
-			data: { clientId, pid: process.pid, ppid: process.ppid },
+			data: { clientId, pid: process.pid, ppid: process.ppid, serverVersion: this._serverVersion }, // Use stored serverVersion
 		})
 
 		this.emit(IpcMessageType.Connect, clientId)

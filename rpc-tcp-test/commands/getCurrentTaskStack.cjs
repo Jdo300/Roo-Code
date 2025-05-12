@@ -1,8 +1,10 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
 async function testGetCurrentTaskStack() {
   const client = new IpcClient();
   let exitCode = 0;
+  /** @type {string} */
   const commandToTest = TaskCommandName.GetCurrentTaskStack;
   console.log(`[Test Script: ${commandToTest}] Starting test...`);
 

@@ -1,8 +1,10 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
 async function testIsTaskInHistory() {
   const client = new IpcClient();
   let exitCode = 0;
+  /** @type {string} */
   const commandToTest = TaskCommandName.IsTaskInHistory;
   
   // IMPORTANT: Replace with a taskId to check.

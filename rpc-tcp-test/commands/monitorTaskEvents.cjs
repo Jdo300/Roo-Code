@@ -1,4 +1,5 @@
-import { IpcClient, TaskCommandName } from '../ipc-client.mjs';
+// @ts-check
+const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 
 // All known TaskEvent names from src/schemas/index.ts (RooCodeEventName)
 // The client emits these directly.

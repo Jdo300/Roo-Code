@@ -1,4 +1,4 @@
-// @ts-check
+6// @ts-check
 
 
 const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
@@ -6,6 +6,7 @@ const { IpcClient, TaskCommandName } = require('../ipc-client.cjs');
 async function testCancelCurrentTask() {
   const client = new IpcClient();
   let exitCode = 0;
+  /** @type {string} */
   const commandToTest = TaskCommandName.CancelCurrentTask;
   console.log(`[Test Script: ${commandToTest}] Starting test...`);
 
@@ -25,15 +26,15 @@ async function testCancelCurrentTask() {
     console.warn(`[Test Script: ${commandToTest}] Note: This command is more meaningful if a task is currently active on the server.`);
     
     console.log(`[Test Script: ${commandToTest}] Sending command...`);
-    /** @type {undefined} */ // Response should be undefined
+    /** @type {{success: boolean} | undefined} */ // Response should be { success: true }
     const response = await client.sendCommand(commandToTest); // No commandData needed
     console.log(`[Test Script: ${commandToTest}] Response received:`, response);
 
-    // Example assertion: The response should be undefined as per schema.
-    if (response === undefined) {
-      console.log(`[Test Script: ${commandToTest}] Test PASSED. Command executed and received undefined response as expected.`);
+    // Example assertion: The response should be { success: true }
+    if (response && response.success === true) {
+      console.log(`[Test Script: ${commandToTest}] Test PASSED. Command executed and received { success: true } response as expected.`);
     } else {
-      console.error(`[Test Script: ${commandToTest}] Test FAILED. Expected undefined response, but received:`, response);
+      console.error(`[Test Script: ${commandToTest}] Test FAILED. Expected { success: true } response, but received:`, response);
       exitCode = 1;
     }
 

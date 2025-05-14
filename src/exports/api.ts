@@ -15,6 +15,7 @@ import {
 	ClineMessage,
 } from "../schemas"
 import { IpcMessageType, IpcOrigin, TaskCommandName, TaskCommand, IpcMessage, TaskEvent } from "../schemas/ipc"
+import { Cline } from "../core/Cline" // Added import
 import { getApiMetrics } from "../shared/getApiMetrics"
 
 import { RooCodeAPI } from "./interface"
@@ -26,7 +27,7 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	private readonly sidebarProvider: ClineProvider
 	private readonly context: vscode.ExtensionContext
 	private readonly ipc?: IpcServer
-	private readonly taskMap = new Map<string, ClineProvider>()
+	private readonly taskMap = new Map<string, Cline>() // Changed ClineProvider to Cline
 	private readonly log: (...args: unknown[]) => void
 	private logfile?: string
 	// Stores the full concatenated text of the last partial message used to calculate a delta for IPC. Keyed by taskId.
@@ -133,7 +134,12 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 							break
 						case TaskCommandName.SendMessage:
 							this.log("[API] Handling SendMessage command")
-							await this.sendMessage(data.message, data.images, clientId, requestId) // Pass requestId to the method
+							await this.sendMessage(
+								data.text,
+								data.imageUrl ? [data.imageUrl] : undefined,
+								clientId,
+								requestId,
+							) // Pass requestId to the method
 							this.sendResponse(clientId, commandName, { success: true }, requestId)
 							break
 						case TaskCommandName.PressPrimaryButton:
@@ -260,8 +266,8 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	}
 
 	public getMessages(taskId: string, clientId: string, requestId?: string): ClineMessage[] {
-		const provider = this.taskMap.get(taskId)
-		const messages = provider ? provider.messages || [] : []
+		const clineInstance = this.taskMap.get(taskId)
+		const messages = clineInstance ? clineInstance.clineMessages || [] : []
 		// If called directly (not via command handler), requestId will be undefined.
 		// The command handler will always send its own response.
 		if (!requestId && clientId) {
@@ -271,13 +277,13 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	}
 
 	public getTokenUsage(taskId: string, clientId: string, requestId?: string): TokenUsage | undefined {
-		const provider = this.taskMap.get(taskId)
+		const clineInstance = this.taskMap.get(taskId)
 		let usage: TokenUsage | undefined = undefined
-		if (provider) {
-			const cline = provider.getCurrentCline()
-			if (cline) {
-				usage = getApiMetrics(cline.clineMessages)
-			}
+		if (clineInstance) {
+			// const cline = provider.getCurrentCline() // clineInstance is the Cline object
+			// if (clineInstance) { // Redundant check
+			usage = getApiMetrics(clineInstance.clineMessages)
+			// }
 		}
 		// If called directly (not via command handler), requestId will be undefined.
 		// The command handler will always send its own response.
@@ -323,8 +329,8 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	private registerListeners(provider: ClineProvider): void {
 		// Listen for events from the ClineProvider
 		provider.on("clineCreated", (cline) => {
-			// Store the ClineProvider instance associated with this task ID
-			this.taskMap.set(cline.taskId, provider)
+			// Store the specific Cline instance associated with this task ID
+			this.taskMap.set(cline.taskId, cline)
 
 			// Emit TaskCreated event
 			this.emit(RooCodeEventName.TaskCreated, cline.taskId)

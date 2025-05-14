@@ -83,8 +83,10 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	taskCommandBase.extend({
 		commandName: z.literal(TaskCommandName.SendMessage),
 		data: z.object({
-			message: z.string().optional(),
-			images: z.array(z.string()).optional(),
+			taskId: z.string(),
+			text: z.string(),
+			imageUrl: z.string().optional(),
+			options: z.record(z.string(), z.any()).optional(),
 		}),
 	}),
 	taskCommandBase.extend({

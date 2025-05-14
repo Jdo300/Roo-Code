@@ -254,7 +254,7 @@ describe("API", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0))
 
 		// Add Cline to API's taskMap
-		api["taskMap"].set("mock-task-id", mockSidebarProvider)
+		api["taskMap"].set("mock-task-id", mockCline as unknown as Cline)
 
 		// Clear any previous calls to broadcast
 		mockIpcInstance.broadcast.mockClear()

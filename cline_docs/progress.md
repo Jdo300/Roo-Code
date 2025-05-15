@@ -24,18 +24,20 @@
     - Enhanced configuration
 
 4. Configuration Schema
+
     - Complete RooCodeSettings implementation
     - Provider-specific settings
     - Environment variable support
     - Validation rules
 
+5. `roo-ipc-bridge` MCP Server Tool Testing (Phases 1-3)
+    - Tested `roo_ipc_is_ready`, `roo_ipc_get_configuration`, `roo_ipc_start_task`, `roo_ipc_get_current_task_stack`, `roo_ipc_get_messages`, and `roo_ipc_get_token_usage`.
+    - Applied fixes to `tool-handlers.ts` for output validation.
+    - Investigated `get_token_usage` issue and found empty message history for current task ID is likely cause.
+
 ## In Progress
 
-1. Testing
-    - Running initial connection tests
-    - Verifying message handling
-    - Testing configuration validation
-    - Error case verification
+(None)
 
 ## To Do
 
@@ -53,10 +55,14 @@
     - Include usage examples
 
 3. Performance Testing
+
     - Load testing
     - Connection stability
     - Message throughput
     - Resource usage monitoring
+
+4. `roo-ipc-bridge` MCP Server Tool Testing (Phase 4)
+    - Test remaining tools as per [`documentation/roo-ipc-mcp-server-design.md`](documentation/roo-ipc-mcp-server-design.md) and [`rpc-tcp-test/commands/README.md`](rpc-tcp-test/commands/README.md).
 
 ## Known Issues
 
@@ -67,7 +73,7 @@
 
 ## Next Steps
 
-1. Run full test suite with updated client
-2. Document test results and any issues
-3. Implement remaining error handling
-4. Add performance monitoring
+1. Begin `roo-ipc-bridge` MCP Server Tool Testing (Phase 4).
+2. Document test results and any issues.
+3. Implement remaining error handling.
+4. Add performance monitoring.

@@ -16,8 +16,6 @@ import {
 } from "../schemas"
 import { IpcMessageType, IpcOrigin, TaskCommandName, TaskCommand, IpcMessage, TaskEvent } from "../schemas/ipc"
 import { Cline } from "../core/Cline" // Added import
-import { getApiMetrics } from "../shared/getApiMetrics"
-
 import { RooCodeAPI } from "./interface"
 import { IpcServer } from "./ipc"
 import { outputChannelLog } from "./log"
@@ -280,10 +278,7 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		const clineInstance = this.taskMap.get(taskId)
 		let usage: TokenUsage | undefined = undefined
 		if (clineInstance) {
-			// const cline = provider.getCurrentCline() // clineInstance is the Cline object
-			// if (clineInstance) { // Redundant check
-			usage = getApiMetrics(clineInstance.clineMessages)
-			// }
+			usage = clineInstance.currentTaskTokenUsage // Retrieve from the instance property
 		}
 		// If called directly (not via command handler), requestId will be undefined.
 		// The command handler will always send its own response.

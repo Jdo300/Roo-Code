@@ -196,6 +196,7 @@ export class Cline extends EventEmitter<ClineEvents> {
 
 	// metrics
 	private toolUsage: ToolUsage = {}
+	currentTaskTokenUsage: TokenUsage = { totalTokensIn: 0, totalTokensOut: 0, totalCost: 0, contextTokens: 0 }
 
 	constructor({
 		provider,
@@ -360,6 +361,7 @@ export class Cline extends EventEmitter<ClineEvents> {
 				workspace: this.cwd,
 			})
 
+			this.currentTaskTokenUsage = tokenUsage // Update the instance property
 			this.emit("taskTokenUsageUpdated", this.taskId, tokenUsage)
 
 			await this.providerRef.deref()?.updateTaskHistory(historyItem)

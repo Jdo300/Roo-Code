@@ -358,7 +358,7 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 					}
 					// Else (e.g., stream reset), send the full new text as a delta, and update base.
 
-					messageForIPC.text = deltaForIPC
+					messageForIPC = { ...originalMessage, text: deltaForIPC }
 					this.lastIPCDeltaBaseText.set(cline.taskId, fullConcatenatedTextFromCline)
 				} else if (isStreamingCompletionResult && !originalMessage.partial) {
 					// Final part of the stream
@@ -369,7 +369,13 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 					if (finalFullTextFromCline.startsWith(previouslySentFullTextToIPC)) {
 						finalDeltaForIPC = finalFullTextFromCline.substring(previouslySentFullTextToIPC.length)
 					}
-					messageForIPC.text = finalDeltaForIPC
+					messageForIPC = { ...originalMessage, text: finalDeltaForIPC }
+					// It's crucial to delete lastIPCDeltaBaseText for the task ID here,
+					// after processing the final (non-partial) completion_result.
+					// This ensures that the delta for the very last chunk is calculated
+					// correctly against the accumulated text from previous chunks.
+					// Clearing it in taskCompleted could be too early if taskCompleted
+					// fires before this final message event is handled.
 					this.lastIPCDeltaBaseText.delete(cline.taskId) // Clean up for this task
 				} else {
 					// Not a streaming completion result, or a non-partial message that wasn't part of a stream.
@@ -422,7 +428,8 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 			cline.on("taskCompleted", async (_: unknown, tokenUsage: TokenUsage, toolUsage: ToolUsage) => {
 				this.emit(RooCodeEventName.TaskCompleted, cline.taskId, tokenUsage, toolUsage)
 				this.taskMap.delete(cline.taskId)
-				this.lastIPCDeltaBaseText.delete(cline.taskId) // Clean up delta tracking
+				// lastIPCDeltaBaseText is now cleared reliably in the 'message' handler
+				// when the final (partial: false) completion_result is processed.
 				await this.fileLog(
 					`[${new Date().toISOString()}] taskCompleted -> ${cline.taskId} | ${JSON.stringify(tokenUsage, null, 2)} | ${JSON.stringify(toolUsage, null, 2)}\n`,
 				)

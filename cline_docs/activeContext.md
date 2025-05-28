@@ -20,6 +20,11 @@ Systematically test and debug the tools provided by the `roo-ipc-bridge` MCP ser
     - `index.ts` (MCP Server): Fixed event routing logic for `message` events.
 - **Notable Behaviors:**
     - `roo_ipc_get_token_usage` returns full payload for historical tasks (better than expected).
+- **Generalized Delta Logic for IPC Messages:**
+    - Refactored the delta calculation logic in `src/exports/api.ts`.
+    - Delta calculation now applies to _any_ message object with a `partial: true` property, regardless of its `type` or other fields (e.g., `say` subtype).
+    - This ensures all streaming messages over IPC use efficient delta updates.
+    - Confirmed working by Jason.
 
 **Test Log Summary (All Initial MCP tools tested):**
 
@@ -43,9 +48,9 @@ _(For a detailed, argument-by-argument test log, a separate `cline_docs/roo_ipc_
 
 ## Next Steps
 
-With the initial functional testing of the `roo-ipc-bridge` MCP server complete, the focus shifts to addressing known limitations and improving overall robustness of the underlying system.
+With the initial functional testing of the `roo-ipc-bridge` MCP server and generalization of delta streaming logic complete, the focus shifts to addressing known limitations and improving overall robustness of the underlying system.
 
-1. **Address Remaining Underlying IPC Bugs:**
+1. **Address Remaining Underlying IPC Bugs (Highest Priority):**
     - Prioritize fixing the underlying IPC functional failures:
         - `ResumeTask` (IPC command needs fixing)
         - `cancelTask <taskId>` (timeout - investigate if MCP can handle this gracefully or if IPC fix is needed)
@@ -53,10 +58,9 @@ With the initial functional testing of the `roo-ipc-bridge` MCP server complete,
     - Address the `CancelCurrentTask` server-side state update timing (IPC bug).
     - Confirm consistency of `GetTokenUsage` for historical tasks (IPC).
     - Ideally, fix `IsTaskInHistory` at the IPC level to return a boolean.
-2. **Investigate `ClineProvider.resolveWebviewView()` Behavior:**
+2. **Investigate `ClineProvider.resolveWebviewView()` Behavior (High Priority):**
     - Understand its impact on task state and potential for premature task removal from `taskMap`. This is crucial for robust task lifecycle management.
 3. **Improve Original Test Scripts & Address UI Sync (Lower Priority).**
-4. **Verify Delta Streaming (Lowest Priority).**
 
 ## Known Underlying IPC Issues to Keep in Mind
 
@@ -70,4 +74,5 @@ With the initial functional testing of the `roo-ipc-bridge` MCP server complete,
 
 - Initial functional testing of all `roo-ipc-bridge` MCP server tools (command-response and event polling) is complete.
 - Several critical fixes applied to the MCP server (`ipc-client.ts`, `tool-handlers.ts`, `index.ts`).
+- Delta streaming logic in `src/exports/api.ts` generalized for all partial messages and confirmed working.
 - **Primary Focus:** Address critical underlying IPC bugs and investigate `resolveWebviewView` behavior.

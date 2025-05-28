@@ -345,10 +345,12 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 				const originalMessage = data.message
 				const originalAction: "created" | "updated" = data.action === "updated" ? "updated" : "created"
 				let messageForIPC = { ...originalMessage } // Start with a copy for IPC
-				const isStreamingCompletionResult =
-					originalMessage.type === "say" && originalMessage.say === "completion_result"
 
-				if (isStreamingCompletionResult && originalMessage.partial) {
+				// --- Generalized Delta Logic ---
+				// Any message with `partial: true` will have its `text` field processed as a delta.
+				// This applies regardless of message.type (e.g., "say", "ask") or other subtypes.
+				// The `text` field is assumed to be the primary content field for streaming.
+				if (originalMessage.partial) {
 					const fullConcatenatedTextFromCline = originalMessage.text || ""
 					const previouslySentFullTextToIPC = this.lastIPCDeltaBaseText.get(cline.taskId) || ""
 					let deltaForIPC = fullConcatenatedTextFromCline
@@ -360,8 +362,9 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 
 					messageForIPC = { ...originalMessage, text: deltaForIPC }
 					this.lastIPCDeltaBaseText.set(cline.taskId, fullConcatenatedTextFromCline)
-				} else if (isStreamingCompletionResult && !originalMessage.partial) {
-					// Final part of the stream
+				} else if (!originalMessage.partial && this.lastIPCDeltaBaseText.has(cline.taskId)) {
+					// This is the final (non-partial) message of a stream that was being tracked.
+					// Calculate the final delta.
 					const finalFullTextFromCline = originalMessage.text || ""
 					const previouslySentFullTextToIPC = this.lastIPCDeltaBaseText.get(cline.taskId) || ""
 					let finalDeltaForIPC = finalFullTextFromCline
@@ -370,18 +373,14 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 						finalDeltaForIPC = finalFullTextFromCline.substring(previouslySentFullTextToIPC.length)
 					}
 					messageForIPC = { ...originalMessage, text: finalDeltaForIPC }
-					// It's crucial to delete lastIPCDeltaBaseText for the task ID here,
-					// after processing the final (non-partial) completion_result.
-					// This ensures that the delta for the very last chunk is calculated
-					// correctly against the accumulated text from previous chunks.
-					// Clearing it in taskCompleted could be too early if taskCompleted
-					// fires before this final message event is handled.
-					this.lastIPCDeltaBaseText.delete(cline.taskId) // Clean up for this task
+					// Clean up delta tracking for this task ID now that the stream has ended.
+					this.lastIPCDeltaBaseText.delete(cline.taskId)
 				} else {
-					// Not a streaming completion result, or a non-partial message that wasn't part of a stream.
-					// Clear any existing delta tracking for this task.
+					// Not a partial message, and no active delta tracking for this task.
+					// Ensure any stale delta tracking is cleared (though it should be if the stream ended correctly).
 					this.lastIPCDeltaBaseText.delete(cline.taskId)
 				}
+				// --- End Generalized Delta Logic ---
 
 				// For local listeners, emit the original message from Cline (with concatenated text)
 				const localEventDataPayload = {

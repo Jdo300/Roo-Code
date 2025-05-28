@@ -31,9 +31,14 @@
     - Validation rules
 
 5. `roo-ipc-bridge` MCP Server Tool Testing (Phases 1-3)
+
     - Tested `roo_ipc_is_ready`, `roo_ipc_get_configuration`, `roo_ipc_start_task`, `roo_ipc_get_current_task_stack`, `roo_ipc_get_messages`, and `roo_ipc_get_token_usage`.
     - Applied fixes to `tool-handlers.ts` for output validation.
     - Investigated `get_token_usage` issue and found empty message history for current task ID is likely cause.
+
+6. Generalized Delta Streaming for IPC
+    - Refactored delta calculation in `src/exports/api.ts` to apply to any message with a `partial: true` property.
+    - Ensures efficient streaming for all partial IPC messages.
 
 ## In Progress
 

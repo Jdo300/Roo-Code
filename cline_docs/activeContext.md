@@ -25,6 +25,13 @@ Systematically test and debug the tools provided by the `roo-ipc-bridge` MCP ser
     - Delta calculation now applies to _any_ message object with a `partial: true` property, regardless of its `type` or other fields (e.g., `say` subtype).
     - This ensures all streaming messages over IPC use efficient delta updates.
     - Confirmed working by Jason.
+- **Code Review of Task Management Commands (`ResumeTask`, `cancelTask`, `closeTask`):**
+    - A detailed review by the Code Reviewer clarified the intended behaviors:
+        - **`ResumeTask(taskId)`:** Reactivates a historical task, making it current. Involves creating a new `Cline` instance from history.
+        - **`cancelTask(taskId)` / `CancelCurrentTask()`:** Stops the _current_ task, cleans resources, then _re-initializes it from history_ to a resumable state (soft stop + reset). The task remains current but needs user interaction.
+        - **`closeTask(taskId)` / `ClearCurrentTask()`:** Completely removes the _current_ task from the active stack and cleans resources (dismissal).
+    - Key distinction: `cancelTask` keeps the task "active" but reset, while `closeTask` removes it from being active.
+    - The review noted that `cancelTask(taskId)` and `closeTask(taskId)` in the current implementation in [`src/exports/api.ts`](src/exports/api.ts:0) only operate if the `taskId` matches the _current_ task. This is important context for addressing related IPC bugs.
 
 **Test Log Summary (All Initial MCP tools tested):**
 

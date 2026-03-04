@@ -158,15 +158,28 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			return [msg]
 		})
 
-		// Letta agents have their own system prompt and persona configured in the Letta platform.
-		// Injecting Roo's system prompt confuses the agent about its identity and role, so we drop it.
-		// When a conversation_id is set, Letta maintains the full history internally — only send
-		// messages from the last user turn onward to avoid duplicating history Letta already stores.
+		// Letta agents have their own persona/system prompt configured in the Letta platform.
+		// Following the Letta Code CLI pattern: pass workspace context as a user-role message
+		// rather than a system-role message, so the agent receives task context without having
+		// its identity overwritten by Roo's persona prompt.
+		//
+		// When a conversation_id is set, Letta maintains full history internally — only send
+		// messages from the last user turn onward to avoid duplicating history.
 		const messagesToSend = conversationId
 			? lettaMessages.slice(
 					lettaMessages.map((m: any) => m.role).lastIndexOf("user"),
 			  )
 			: lettaMessages
+
+		// Prepend system prompt as a user-role context message (Letta Code pattern).
+		// This gives the agent workspace context (current file, task, CWD) without
+		// overriding its configured persona.
+		if (systemPrompt && messagesToSend.length > 0) {
+			messagesToSend.unshift({
+				role: "user",
+				content: `[Task Context]\n${systemPrompt}`,
+			})
+		}
 
 		// Using native fetch for the Letta REST API instead of the OpenAI client
 		// so we can explicitly pass conversation_id and handle Letta's unique stream format if needed.

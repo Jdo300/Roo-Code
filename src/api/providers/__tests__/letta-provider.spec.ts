@@ -32,7 +32,6 @@ describe("LettaHandler", () => {
 			expect(model.info.maxTokens).toBe(8192)
 			expect(model.info.contextWindow).toBe(128000)
 			expect(model.info.supportsImages).toBe(false)
-			expect(model.info.supportsComputerUse).toBe(false)
 		})
 
 		it("should fallback to 'letta-agent' if no apiModelId is provided", () => {

@@ -1078,7 +1078,7 @@ export const webviewMessageHandler = async (
 				(message.values?.lettaBaseUrl as string) || lettaConvConfig.lettaBaseUrl || "https://api.letta.com/v1"
 			const convApiKey = (message.values?.lettaApiKey as string) || lettaConvConfig.lettaApiKey || "not-provided"
 			if (!agentId) {
-				provider.postMessageToWebview({ type: "lettaConversations", lettaConversations: [] })
+				provider.postMessageToWebview({ type: "lettaConversations", lettaConversations: { conversations: [] } })
 				break
 			}
 			try {

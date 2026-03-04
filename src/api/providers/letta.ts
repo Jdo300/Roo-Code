@@ -158,7 +158,15 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			return [msg]
 		})
 
-		const mappedMessages = [{ role: "system", content: systemPrompt }, ...lettaMessages]
+		// Letta agents have their own system prompt and persona configured in the Letta platform.
+		// Injecting Roo's system prompt confuses the agent about its identity and role, so we drop it.
+		// When a conversation_id is set, Letta maintains the full history internally — only send
+		// messages from the last user turn onward to avoid duplicating history Letta already stores.
+		const messagesToSend = conversationId
+			? lettaMessages.slice(
+					lettaMessages.map((m: any) => m.role).lastIndexOf("user"),
+			  )
+			: lettaMessages
 
 		// Using native fetch for the Letta REST API instead of the OpenAI client
 		// so we can explicitly pass conversation_id and handle Letta's unique stream format if needed.
@@ -166,7 +174,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			method: "POST",
 			headers: await this.getHeaders(),
 			body: JSON.stringify({
-				messages: mappedMessages,
+				messages: messagesToSend,
 				conversation_id: conversationId,
 				client_tools: this.convertToolsForOpenAI(metadata?.tools)?.map((tool: any) => {
 					return {

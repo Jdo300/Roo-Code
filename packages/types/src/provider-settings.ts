@@ -34,7 +34,15 @@ export const DEFAULT_CONSECUTIVE_MISTAKE_LIMIT = 3
  * Dynamic provider requires external API calls in order to get the model list.
  */
 
-export const dynamicProviders = ["openrouter", "vercel-ai-gateway", "litellm", "requesty", "roo", "unbound"] as const
+export const dynamicProviders = [
+	"openrouter",
+	"vercel-ai-gateway",
+	"litellm",
+	"requesty",
+	"roo",
+	"unbound",
+	"letta",
+] as const
 
 export type DynamicProvider = (typeof dynamicProviders)[number]
 
@@ -109,6 +117,7 @@ export const providerNames = [
 	"fireworks",
 	"gemini",
 	"gemini-cli",
+	"letta",
 	"mistral",
 	"moonshot",
 	"minimax",
@@ -381,6 +390,15 @@ const basetenSchema = apiModelIdProviderModelSchema.extend({
 	basetenApiKey: z.string().optional(),
 })
 
+const lettaSchema = apiModelIdProviderModelSchema.extend({
+	lettaBaseUrl: z.string().optional(),
+	lettaApiKey: z.string().optional(),
+	lettaConversationMode: z.enum(["manual", "auto_workspace", "new_task"]).optional(),
+	lettaConversationId: z.string().optional(),
+	lettaModelId: z.string().optional(), // Stores the selected LLM model (e.g. gpt-4)
+	// "apiModelId" will store the selected Agent ID.
+})
+
 const defaultSchema = z.object({
 	apiProvider: z.undefined(),
 })
@@ -414,6 +432,7 @@ export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProv
 	qwenCodeSchema.merge(z.object({ apiProvider: z.literal("qwen-code") })),
 	rooSchema.merge(z.object({ apiProvider: z.literal("roo") })),
 	vercelAiGatewaySchema.merge(z.object({ apiProvider: z.literal("vercel-ai-gateway") })),
+	lettaSchema.merge(z.object({ apiProvider: z.literal("letta") })),
 	defaultSchema,
 ])
 
@@ -447,6 +466,7 @@ export const providerSettingsSchema = z.object({
 	...qwenCodeSchema.shape,
 	...rooSchema.shape,
 	...vercelAiGatewaySchema.shape,
+	...lettaSchema.shape,
 	...codebaseIndexProviderSchema.shape,
 })
 
@@ -467,6 +487,7 @@ export const PROVIDER_SETTINGS_KEYS = providerSettingsSchema.keyof().options
  */
 
 export const modelIdKeys = [
+	"lettaModelId",
 	"apiModelId",
 	"openRouterModelId",
 	"openAiModelId",
@@ -521,6 +542,7 @@ export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
 	fireworks: "apiModelId",
 	roo: "apiModelId",
 	"vercel-ai-gateway": "vercelAiGatewayModelId",
+	letta: "lettaModelId",
 }
 
 /**
@@ -632,6 +654,7 @@ export const MODELS_BY_PROVIDER: Record<
 	baseten: { id: "baseten", label: "Baseten", models: Object.keys(basetenModels) },
 
 	// Dynamic providers; models pulled from remote APIs.
+	letta: { id: "letta", label: "Letta", models: [] },
 	litellm: { id: "litellm", label: "LiteLLM", models: [] },
 	openrouter: { id: "openrouter", label: "OpenRouter", models: [] },
 	requesty: { id: "requesty", label: "Requesty", models: [] },

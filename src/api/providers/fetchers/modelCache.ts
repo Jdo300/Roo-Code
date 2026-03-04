@@ -91,6 +91,9 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 			models = await getRooModels(rooBaseUrl, options.apiKey)
 			break
 		}
+		case "letta":
+			models = {}
+			break
 		default: {
 			// Ensures router is exhaustively checked if RouterName is a strict union.
 			const exhaustiveCheck: never = provider

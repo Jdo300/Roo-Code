@@ -336,6 +336,10 @@ function getSelectedModel({
 			const info = routerModels["vercel-ai-gateway"]?.[id]
 			return { id, info }
 		}
+		case "letta": {
+			const id = apiConfiguration.lettaModelId ?? apiConfiguration.apiModelId ?? defaultModelId
+			return { id, info: undefined }
+		}
 		// case "anthropic":
 		// case "fake-ai":
 		default: {

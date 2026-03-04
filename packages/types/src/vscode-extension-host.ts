@@ -47,6 +47,11 @@ export interface ExtensionMessage {
 		| "ollamaModels"
 		| "lmStudioModels"
 		| "vsCodeLmModels"
+		| "vsCodeLmModels"
+		| "lettaAgents"
+		| "lettaModels"
+		| "lettaConversations"
+		| "lettaConnectionStatus"
 		| "vsCodeLmApiAvailable"
 		| "updatePrompt"
 		| "systemPrompt"
@@ -141,6 +146,11 @@ export interface ExtensionMessage {
 	ollamaModels?: ModelRecord
 	lmStudioModels?: ModelRecord
 	vsCodeLmModels?: { vendor?: string; family?: string; version?: string; id?: string }[]
+	lettaAgents?: { id: string; name: string; model?: string }[]
+	// Letta API returns a rich object for models, including llm_config info we need for patching.
+	lettaModels?: any[]
+	lettaConversations?: { conversations: { id: string; name: string }[]; error?: string }
+	lettaConnectionStatus?: { success: boolean; error?: string; agentCount?: number }
 	mcpServers?: McpServer[]
 	commits?: GitCommit[]
 	listApiConfig?: ProviderSettingsEntry[]
@@ -440,6 +450,11 @@ export interface WebviewMessage {
 		| "requestOllamaModels"
 		| "requestLmStudioModels"
 		| "requestRooModels"
+		| "requestLettaAgents"
+		| "requestLettaModels"
+		| "updateLettaAgentModel"
+		| "requestLettaConversations"
+		| "testLettaConnection"
 		| "requestRooCreditBalance"
 		| "requestVsCodeLmModels"
 		| "openImage"
@@ -621,6 +636,8 @@ export interface WebviewMessage {
 	skillDescription?: string // For createSkill (skill description)
 	/** Mode slugs for skill operations. undefined/empty = any mode */
 	skillModeSlugs?: string[] // For skill operations (mode restrictions)
+	/** Agent ID for Letta conversation requests */
+	lettaAgentId?: string
 	/** Target mode slugs for updateSkillModes */
 	newSkillModeSlugs?: string[] // For updateSkillModes (new mode restrictions)
 	requestId?: string

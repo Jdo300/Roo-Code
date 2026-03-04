@@ -91,6 +91,7 @@ import {
 	ZAi,
 	Fireworks,
 	VercelAiGateway,
+	Letta,
 	MiniMax,
 } from "./providers"
 
@@ -208,12 +209,25 @@ const ApiOptions = ({
 			return
 		}
 
+		// Letta uses apiModelId to store the user-chosen agent ID (fetched from the Letta API),
+		// not a static model ID from a model list. Skip the auto-sync so the agent dropdown
+		// selection isn't immediately overwritten.
+		if (selectedProvider === "letta") {
+			return
+		}
+
 		if (selectedModelId && apiConfiguration.apiModelId !== selectedModelId) {
 			// Pass false as third parameter to indicate this is not a user action
 			// This is an internal sync, not a user-initiated change
 			setApiConfigurationField("apiModelId", selectedModelId, false)
 		}
-	}, [selectedModelId, setApiConfigurationField, apiConfiguration.apiModelId, isRetiredSelectedProvider])
+	}, [
+		selectedModelId,
+		setApiConfigurationField,
+		apiConfiguration.apiModelId,
+		isRetiredSelectedProvider,
+		selectedProvider,
+	])
 
 	// Debounced refresh model updates, only executed 250ms after the user
 	// stops typing.
@@ -572,6 +586,13 @@ const ApiOptions = ({
 							apiConfiguration={apiConfiguration}
 							setApiConfigurationField={setApiConfigurationField}
 							simplifySettings={fromWelcomeView}
+						/>
+					)}
+
+					{selectedProvider === "letta" && (
+						<Letta
+							apiConfiguration={apiConfiguration}
+							setApiConfigurationField={setApiConfigurationField}
 						/>
 					)}
 

@@ -111,6 +111,8 @@ export function getProviderDefaultModelId(
 			return unboundDefaultModelId
 		case "vercel-ai-gateway":
 			return vercelAiGatewayDefaultModelId
+		case "letta":
+			return "" // Letta uses fully dynamic model selection
 		case "anthropic":
 		case "gemini-cli":
 		case "fake-ai":

@@ -880,6 +880,7 @@ export const webviewMessageHandler = async (
 						ollama: {},
 						lmstudio: {},
 						roo: {},
+						letta: {},
 					}
 
 			const safeGetModels = async (options: GetModelsOptions): Promise<ModelRecord> => {
@@ -1035,6 +1036,175 @@ export const webviewMessageHandler = async (
 			} catch (error) {
 				// Silently fail - user hasn't configured LM Studio yet.
 				console.debug("LM Studio models fetch failed:", error)
+			}
+			break
+		}
+		case "requestLettaAgents": {
+			const { apiConfiguration: lettaConfig } = await provider.getState()
+			// Prefer live credentials from webview (unsaved) over persisted state
+			const baseUrl =
+				(message.values?.lettaBaseUrl as string) || lettaConfig.lettaBaseUrl || "https://api.letta.com/v1"
+			const apiKey = (message.values?.lettaApiKey as string) || lettaConfig.lettaApiKey || "not-provided"
+			try {
+				const response = await fetch(`${baseUrl}/agents`, {
+					method: "GET",
+					headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+				})
+				if (response.ok) {
+					const data = (await response.json()) as any
+					const agents = Array.isArray(data)
+						? data.map((a: any) => ({
+								id: a.id,
+								name: a.name || a.id,
+								model: a.llm_config?.model,
+							}))
+						: []
+					provider.postMessageToWebview({ type: "lettaAgents", lettaAgents: agents })
+				} else {
+					console.debug(`Letta agents fetch failed: ${response.status} ${response.statusText}`)
+					provider.postMessageToWebview({ type: "lettaAgents", lettaAgents: [] })
+				}
+			} catch (error) {
+				console.debug("Letta agents fetch failed:", error)
+				provider.postMessageToWebview({ type: "lettaAgents", lettaAgents: [] })
+			}
+			break
+		}
+		case "requestLettaConversations": {
+			const { apiConfiguration: lettaConvConfig } = await provider.getState()
+			const agentId = message.lettaAgentId
+			// Prefer live credentials from webview (unsaved) over persisted state
+			const convBaseUrl =
+				(message.values?.lettaBaseUrl as string) || lettaConvConfig.lettaBaseUrl || "https://api.letta.com/v1"
+			const convApiKey = (message.values?.lettaApiKey as string) || lettaConvConfig.lettaApiKey || "not-provided"
+			if (!agentId) {
+				provider.postMessageToWebview({ type: "lettaConversations", lettaConversations: [] })
+				break
+			}
+			try {
+				let response = await fetch(`${convBaseUrl}/agents/${agentId}/conversations`, {
+					method: "GET",
+					headers: { "Content-Type": "application/json", Authorization: `Bearer ${convApiKey}` },
+				})
+
+				// Optional fallback if the specific agent endpoint fails (e.g., 404 on Letta Cloud)
+				if (!response.ok && response.status === 404) {
+					const fallbackResponse = await fetch(`${convBaseUrl}/conversations?agent_id=${agentId}`, {
+						method: "GET",
+						headers: { "Content-Type": "application/json", Authorization: `Bearer ${convApiKey}` },
+					})
+					if (fallbackResponse.ok) {
+						response = fallbackResponse
+					}
+				}
+
+				if (response.ok) {
+					const data = (await response.json()) as any
+					const conversations = Array.isArray(data)
+						? data.map((c: any) => ({ id: c.id || c.conversation_id, name: c.name || c.id }))
+						: Array.isArray(data?.conversations)
+							? data.conversations.map((c: any) => ({
+									id: c.id || c.conversation_id,
+									name: c.name || c.id,
+								}))
+							: []
+					provider.postMessageToWebview({ type: "lettaConversations", lettaConversations: { conversations } })
+				} else {
+					console.debug(`Letta conversations fetch failed: ${response.status} ${response.statusText}`)
+					provider.postMessageToWebview({
+						type: "lettaConversations",
+						lettaConversations: {
+							conversations: [],
+							error: `HTTP ${response.status}: ${response.statusText}`,
+						},
+					})
+				}
+			} catch (error: any) {
+				console.debug("Letta conversations fetch failed:", error)
+				provider.postMessageToWebview({
+					type: "lettaConversations",
+					lettaConversations: { conversations: [], error: error?.message || "Connection failed" },
+				})
+			}
+			break
+		}
+		case "requestLettaModels": {
+			const { apiConfiguration: testConfig } = await provider.getState()
+			const testBaseUrl =
+				(message.values?.lettaBaseUrl as string) || testConfig.lettaBaseUrl || "https://api.letta.com/v1"
+			const testApiKey = (message.values?.lettaApiKey as string) || testConfig.lettaApiKey || "not-provided"
+			try {
+				const response = await fetch(`${testBaseUrl}/models`, {
+					method: "GET",
+					headers: { "Content-Type": "application/json", Authorization: `Bearer ${testApiKey}` },
+				})
+				if (response.ok) {
+					const data = await response.json()
+					const models = Array.isArray(data) ? data : []
+					provider.postMessageToWebview({ type: "lettaModels", lettaModels: models })
+				} else {
+					console.debug(`Letta models fetch failed: ${response.status} ${response.statusText}`)
+					provider.postMessageToWebview({ type: "lettaModels", lettaModels: [] })
+				}
+			} catch (error) {
+				console.debug("Letta models fetch failed:", error)
+				provider.postMessageToWebview({ type: "lettaModels", lettaModels: [] })
+			}
+			break
+		}
+		case "updateLettaAgentModel": {
+			const agentId = message.values?.agentId
+			const llmConfig = message.values?.llmConfig
+			if (!agentId || !llmConfig) break
+
+			const { apiConfiguration: config } = await provider.getState()
+			const baseUrl = config.lettaBaseUrl || "https://api.letta.com/v1"
+			const apiKey = config.lettaApiKey || "not-provided"
+			try {
+				const response = await fetch(`${baseUrl}/agents/${agentId}`, {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+					body: JSON.stringify({ llm_config: llmConfig }),
+				})
+				if (!response.ok) {
+					console.debug(`Letta agent model patch failed: ${response.status} ${response.statusText}`)
+				}
+			} catch (error) {
+				console.debug("Letta agent model patch failed:", error)
+			}
+			break
+		}
+		case "testLettaConnection": {
+			const { apiConfiguration: testConfig } = await provider.getState()
+			const testBaseUrl =
+				(message.values?.lettaBaseUrl as string) || testConfig.lettaBaseUrl || "https://api.letta.com/v1"
+			const testApiKey = (message.values?.lettaApiKey as string) || testConfig.lettaApiKey || "not-provided"
+			try {
+				const response = await fetch(`${testBaseUrl}/agents`, {
+					method: "GET",
+					headers: { "Content-Type": "application/json", Authorization: `Bearer ${testApiKey}` },
+				})
+				if (response.ok) {
+					const data = (await response.json()) as any
+					const agentCount = Array.isArray(data) ? data.length : 0
+					provider.postMessageToWebview({
+						type: "lettaConnectionStatus",
+						lettaConnectionStatus: { success: true, agentCount },
+					})
+				} else {
+					provider.postMessageToWebview({
+						type: "lettaConnectionStatus",
+						lettaConnectionStatus: {
+							success: false,
+							error: `HTTP ${response.status}: ${response.statusText}`,
+						},
+					})
+				}
+			} catch (error: any) {
+				provider.postMessageToWebview({
+					type: "lettaConnectionStatus",
+					lettaConnectionStatus: { success: false, error: error?.message || "Connection failed" },
+				})
 			}
 			break
 		}

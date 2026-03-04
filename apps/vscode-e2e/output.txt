@@ -1,0 +1,12 @@
+
+🤖 Connecting to Letta Agent: agent-175d45ac-7b27-4fc5-9e6b-8ab0c518e54f
+🌐 Base URL: https://api.letta.com/v1
+
+💬 Sending message: 'Hello! Please reply to me by saying exactly the phrase: Roo Code Letta Integration is successfully working!'
+
+---- RESPONSE STREAM ----
+Roo Code Letta Integration is successfully working!
+
+---- END OF STREAM ----
+
+✅ Stream completed successfully!

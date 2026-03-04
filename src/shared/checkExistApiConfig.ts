@@ -24,5 +24,9 @@ export function checkExistKey(config: ProviderSettings | undefined) {
 		config.vsCodeLmModelSelector,
 	].some((value) => value !== undefined)
 
+	if (config.apiProvider === "letta") {
+		return Boolean(config.apiModelId)
+	}
+
 	return hasSecretKey || hasOtherConfig
 }

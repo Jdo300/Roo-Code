@@ -1,5 +1,6 @@
 export { AnthropicVertexHandler } from "./anthropic-vertex"
 export { AnthropicHandler } from "./anthropic"
+export { LettaHandler } from "./letta"
 export { AwsBedrockHandler } from "./bedrock"
 export { DeepSeekHandler } from "./deepseek"
 export { MoonshotHandler } from "./moonshot"

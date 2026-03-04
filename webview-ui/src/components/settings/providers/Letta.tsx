@@ -86,6 +86,10 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 		setLocalModelId(apiConfiguration.lettaModelId || "")
 	}, [apiConfiguration.lettaModelId])
 
+	// Auto-load agents on mount if credentials already configured (fixes cold-start blank model bug)
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	useEffect(() => { if (lettaApiKey) refreshAgents() }, []) // mount only
+
 	// Refs for stale-closure-safe callbacks
 	const credentialsRef = useRef({ lettaBaseUrl, lettaApiKey })
 	credentialsRef.current = { lettaBaseUrl, lettaApiKey }
@@ -93,6 +97,10 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 	localAgentIdRef.current = localAgentId
 	const localModelIdRef = useRef(localModelId)
 	localModelIdRef.current = localModelId
+	const localConvModeRef = useRef(localConvMode)
+	localConvModeRef.current = localConvMode
+	const localConvIdRef = useRef(localConvId)
+	localConvIdRef.current = localConvId
 	const setApiConfigurationFieldRef = useRef(setApiConfigurationField)
 	setApiConfigurationFieldRef.current = setApiConfigurationField
 
@@ -157,11 +165,11 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 				const convs = await getLettaConversations({ agentId: id, ...credentialsRef.current })
 				setConversationsList(convs)
 
-				// Auto-select the first conversation if none is selected and we are in manual mode
-				if (localConvMode === "manual" && convs.length > 0 && !localConvId) {
+				// Use refs to avoid stale closures and prevent effect loops
+				if (localConvModeRef.current === "manual" && convs.length > 0 && !localConvIdRef.current) {
 					const firstConv = convs[0].id
 					setLocalConvId(firstConv)
-					setApiConfigurationField("lettaConversationId", firstConv)
+					setApiConfigurationFieldRef.current("lettaConversationId", firstConv)
 				}
 			} catch (e: any) {
 				setConversationsError(e?.message || "Failed to load conversations")
@@ -170,7 +178,8 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 				setConversationsLoading(false)
 			}
 		},
-		[localConvMode, localConvId, setApiConfigurationField],
+		// Stable deps only — localConvMode/Id accessed via refs to prevent effect loops
+		[],
 	)
 
 	// Listen for testLettaConnection response from extension host

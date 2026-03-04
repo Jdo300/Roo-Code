@@ -43,7 +43,7 @@ suite("Roo Code Letta E2E", function () {
 				lettaBaseUrl: baseUrl,
 				lettaModelId: agentId,
 				lettaConversationMode: "new_task",
-			} as any,
+			} as Record<string, unknown>,
 			text: "Hello! Please reply to me by saying exactly the phrase: 'Roo Code Letta Integration is successfully working!'",
 		})
 

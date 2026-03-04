@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { ExtensionMessage } from "../../../../../packages/types/src/index"
 import { vscode } from "@src/utils/vscode"
 
@@ -62,14 +62,19 @@ export function useLettaModels(req: UseLettaModelsRequest) {
 	const [modelsLoading, setModelsLoading] = useState(false)
 	const [modelsError, setModelsError] = useState<string | null>(null)
 
+	// Ref for stale-closure-safe callback
+	const reqRef = useRef(req)
+	reqRef.current = req
+
 	const fetchModels = useCallback(async () => {
-		if (!req.lettaApiKey) return
+		const r = reqRef.current
+		if (!r.lettaApiKey) return
 
 		setModelsLoading(true)
 		setModelsError(null)
 
 		try {
-			const result = await getLettaModels(req)
+			const result = await getLettaModels(r)
 			if (result && result.length > 0) {
 				setModels(result)
 			} else {
@@ -80,14 +85,14 @@ export function useLettaModels(req: UseLettaModelsRequest) {
 		} finally {
 			setModelsLoading(false)
 		}
-	}, [req.lettaBaseUrl, req.lettaApiKey])
+	}, []) // reqRef is stable
 
 	useEffect(() => {
 		// Only fetch automatically if we actually have a key
 		if (req.lettaApiKey && req.lettaApiKey !== "not-provided") {
 			fetchModels()
 		}
-	}, [req.lettaBaseUrl, req.lettaApiKey])
+	}, [req.lettaBaseUrl, req.lettaApiKey, fetchModels])
 
 	return {
 		models,

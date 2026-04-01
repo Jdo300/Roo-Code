@@ -8,6 +8,7 @@ describe("LettaHandler", () => {
 	beforeEach(() => {
 		options = {
 			apiModelId: "agent-123",
+			lettaModelId: "letta/letta-free",
 			lettaBaseUrl: "http://localhost:8283/v1",
 			lettaApiKey: "test-key",
 			lettaConversationMode: "auto_workspace",
@@ -26,19 +27,19 @@ describe("LettaHandler", () => {
 	})
 
 	describe("getModel", () => {
-		it("should return the correct model info", () => {
+		it("should return the lettaModelId as model id", () => {
 			const model = handler.getModel()
-			expect(model.id).toBe("agent-123")
+			expect(model.id).toBe("letta/letta-free")
 			expect(model.info.maxTokens).toBe(8192)
 			expect(model.info.contextWindow).toBe(128000)
 			expect(model.info.supportsImages).toBe(false)
 		})
 
-		it("should fallback to 'letta-agent' if no apiModelId is provided", () => {
+		it("should fallback to 'letta-default' if no lettaModelId is provided", () => {
 			const emptyOptions = {}
 			const emptyHandler = new LettaHandler(emptyOptions)
 			const model = emptyHandler.getModel()
-			expect(model.id).toBe("letta-agent")
+			expect(model.id).toBe("letta-default")
 		})
 	})
 })

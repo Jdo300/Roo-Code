@@ -104,7 +104,7 @@ function validateModelsAndKeysProvided(apiConfiguration: ProviderSettings): stri
 			}
 			break
 		case "letta":
-			if (!apiConfiguration.apiModelId) {
+			if (!apiConfiguration.apiModelId || !apiConfiguration.lettaModelId) {
 				return i18next.t("settings:validation.modelId")
 			}
 			break

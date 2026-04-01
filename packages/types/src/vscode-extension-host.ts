@@ -47,7 +47,6 @@ export interface ExtensionMessage {
 		| "ollamaModels"
 		| "lmStudioModels"
 		| "vsCodeLmModels"
-		| "vsCodeLmModels"
 		| "lettaAgents"
 		| "lettaModels"
 		| "lettaConversations"
@@ -148,7 +147,7 @@ export interface ExtensionMessage {
 	vsCodeLmModels?: { vendor?: string; family?: string; version?: string; id?: string }[]
 	lettaAgents?: { id: string; name: string; model?: string }[]
 	// Letta API returns a rich object for models, including llm_config info we need for patching.
-	lettaModels?: any[]
+	lettaModels?: { name: string; handle?: string; provider_name?: string; context_window?: number }[]
 	lettaConversations?: { conversations: { id: string; name: string }[]; error?: string }
 	lettaConnectionStatus?: { success: boolean; error?: string; agentCount?: number }
 	mcpServers?: McpServer[]

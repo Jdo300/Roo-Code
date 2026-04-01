@@ -337,7 +337,7 @@ function getSelectedModel({
 			return { id, info }
 		}
 		case "letta": {
-			const id = apiConfiguration.lettaModelId ?? apiConfiguration.apiModelId ?? defaultModelId
+			const id = apiConfiguration.lettaModelId || apiConfiguration.apiModelId || defaultModelId
 			return { id, info: undefined }
 		}
 		// case "anthropic":

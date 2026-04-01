@@ -166,9 +166,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		// When a conversation_id is set, Letta maintains full history internally — only send
 		// messages from the last user turn onward to avoid duplicating history.
 		const messagesToSend = conversationId
-			? lettaMessages.slice(
-					lettaMessages.map((m: any) => m.role).lastIndexOf("user"),
-			  )
+			? lettaMessages.slice(lettaMessages.map((m: any) => m.role).lastIndexOf("user"))
 			: lettaMessages
 
 		// Prepend system prompt as a user-role context message (Letta Code pattern).
@@ -181,6 +179,52 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			})
 		}
 
+		// Letta Cloud requires the agent to be configured with the model before sending messages.
+		// Even if the UI sent an update, external changes or agent recreation might have lost it.
+		// We patch the agent's model settings dynamically here to prevent the "model-unknown" 429 error.
+		const modelId = this.options.lettaModelId || "letta-default"
+
+		// Determine provider_type from modelId for the Letta API schema
+		// Note: Letta Cloud uses a discriminated union for model_settings.
+		let providerType = "openai"
+		if (modelId.includes("claude") || modelId.startsWith("anthropic/")) {
+			providerType = "anthropic"
+		} else if (modelId.includes("gemini") || modelId.startsWith("google/")) {
+			providerType = "gemini"
+		}
+
+		console.debug(`[LettaHandler] PATCH Attempt - Agent ID: ${agentId}, Model: ${modelId} (${providerType})`)
+
+		try {
+			// Verified schema for Letta Cloud agents
+			const patchPayload = {
+				model_settings: {
+					name: modelId,
+					provider_type: providerType,
+				},
+			}
+			console.debug(`[LettaHandler] PATCH Payload: ${JSON.stringify(patchPayload)}`)
+
+			const patchResponse = await fetch(`${this.baseUrl}/agents/${agentId}`, {
+				method: "PATCH",
+				headers: await this.getHeaders(),
+				body: JSON.stringify(patchPayload),
+			})
+
+			const patchText = await patchResponse.text()
+			console.debug(`[LettaHandler] PATCH Status: ${patchResponse.status} ${patchResponse.statusText}`)
+			console.debug(`[LettaHandler] PATCH Response: ${patchText}`)
+
+			if (!patchResponse.ok) {
+				console.debug(
+					`[LettaHandler] Failed to patch agent model config: ${patchResponse.status} ${patchResponse.statusText}`,
+				)
+			}
+		} catch (e: any) {
+			console.debug(`[LettaHandler] PATCH Error: ${e.message}`)
+			console.debug("[LettaHandler] Error patching Letta agent model config:", e)
+		}
+
 		// Using native fetch for the Letta REST API instead of the OpenAI client
 		// so we can explicitly pass conversation_id and handle Letta's unique stream format if needed.
 		const response = await fetch(`${this.baseUrl}/agents/${agentId}/messages/stream`, {
@@ -189,11 +233,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			body: JSON.stringify({
 				messages: messagesToSend,
 				conversation_id: conversationId,
-				client_tools: this.convertToolsForOpenAI(metadata?.tools)?.map((tool: any) => {
+				client_tools: metadata?.tools?.map((tool: any) => {
 					return {
-						name: tool.function.name,
-						description: tool.function.description,
-						parameters: tool.function.parameters,
+						name: tool.name,
+						description: tool.description,
+						parameters: this.convertToolSchemaForOpenAI(tool.input_schema),
 					}
 				}),
 				// stream: true, // Letta's /stream endpoint implies streaming
@@ -202,6 +246,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 
 		if (!response.ok) {
 			const text = await response.text()
+			if (response.status === 409) {
+				throw new Error(
+					`Letta API Error: 409 (Conflict). The agent is waiting for tool approval from a previous attempt. Please go to Letta Cloud, click "Reset Agent" or "Clear All Messages", or create a new agent to continue.`,
+				)
+			}
 			throw new Error(`Letta API Error: ${response.status} - ${text}`)
 		}
 
@@ -233,7 +282,17 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 
 					try {
 						const parsed = JSON.parse(dataStr)
-						require("fs").appendFileSync("/tmp/letta_debug.log", dataStr + "\n")
+
+						// Check for Letta SSE error messages (like 409 Conflict)
+						if (parsed.message_type === "error_message") {
+							const errMsg = parsed.message || parsed.detail || ""
+							if (errMsg.includes("CONFLICT")) {
+								throw new Error(
+									`Letta API Error: 409 (Conflict). The agent is waiting for tool approval from a previous attempt. Please go to Letta Cloud, click "Reset Agent" or "Clear All Messages", or create a new agent to continue.`,
+								)
+							}
+							throw new Error(`Letta Provider Error: ${errMsg}`)
+						}
 
 						// Handle standard OpenAI-compatible delta format Letta might emit
 						if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
@@ -256,25 +315,30 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 							}
 						}
 						// Handle native LettaMessage format
-						const msg = parsed.message || parsed
+						const msg = parsed
 						if (msg) {
 							// Letta native messages can be internal monologues or function calls
 							if (
-								(msg.role === "assistant" || msg.message_type === "assistant_message") &&
-								typeof msg.content === "string"
+								msg.message_type === "assistant_message" ||
+								msg.message_type === "reasoning_message" ||
+								msg.role === "assistant"
 							) {
-								yield { type: "text", text: msg.content }
+								const text = msg.content || msg.reasoning
+								if (typeof text === "string" && text.length > 0) {
+									yield { type: "text", text: text }
+								}
 							}
-							if (msg.tool_calls) {
-								for (const tool of msg.tool_calls) {
+							if (msg.message_type === "approval_request_message" || msg.tool_calls) {
+								const toolCalls = msg.tool_calls || (msg.tool_call ? [msg.tool_call] : [])
+								for (const tool of toolCalls) {
 									yield {
 										type: "tool_call",
-										id: tool.id || "tool_" + Date.now(),
-										name: tool.function?.name,
+										id: tool.tool_call_id || tool.id || "tool_" + Date.now(),
+										name: tool.name || tool.function?.name,
 										arguments:
-											typeof tool.function?.arguments === "object"
-												? JSON.stringify(tool.function.arguments)
-												: tool.function?.arguments,
+											typeof tool.arguments === "object"
+												? JSON.stringify(tool.arguments)
+												: tool.arguments || tool.function?.arguments,
 									}
 								}
 							} else if (msg.tool_call) {
@@ -302,8 +366,12 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 								}
 							}
 						}
-					} catch (e) {
-						// Ignore parse errors on incomplete chunks
+					} catch (e: any) {
+						// Propagate our specific API errors instead of swallowing them
+						if (e.message && e.message.includes("Letta API Error")) {
+							throw e
+						}
+						// Ignore JSON parse errors on incomplete chunks
 						console.warn("Letta SSE parse error", e, dataStr)
 					}
 				}
@@ -319,6 +387,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		// If lettaModelId is not set yet, use a safe placeholder so we never send
 		// the agent UUID as the model to Letta Cloud.
 		const modelId = this.options.lettaModelId || "letta-default"
+		if (!this.options.lettaModelId) {
+			console.warn(
+				"[LettaHandler] lettaModelId is not set — using placeholder. Select a model in Letta provider settings.",
+			)
+		}
 		return {
 			id: modelId,
 			info: {

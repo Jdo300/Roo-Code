@@ -428,7 +428,8 @@ export class ContextProxy {
 		const sanitizedValues = this.sanitizeProviderValues(values)
 
 		try {
-			return providerSettingsSchema.parse(sanitizedValues)
+			const result = providerSettingsSchema.parse(sanitizedValues)
+			return result
 		} catch (error) {
 			if (error instanceof ZodError) {
 				TelemetryService.instance.captureSchemaValidationError({ schemaName: "ProviderSettings", error })

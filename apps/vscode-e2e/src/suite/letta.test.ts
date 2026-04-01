@@ -12,9 +12,13 @@ suite("Roo Code Letta E2E", function () {
 	test("Should handle Letta provider chat and stream correctly", async () => {
 		const api = globalThis.api
 
-		const apiKey = process.env.LETTA_API_KEY
-		const baseUrl = process.env.LETTA_BASE_URL
-		const agentId = process.env.LETTA_AGENT_ID
+		const apiKey = process.env.LETTA_API_KEY || "dummy_api_key"
+		const baseUrl = process.env.LETTA_BASE_URL || "https://api.letta.com/v1"
+		const agentId = process.env.LETTA_AGENT_ID || "agent-123"
+
+		if (!process.env.LETTA_API_KEY || !process.env.LETTA_AGENT_ID) {
+			console.log("⚠️  Running Letta E2E test with dummy credentials since environment variables are missing.")
+		}
 
 		if (!apiKey || !baseUrl || !agentId) {
 			console.log(
@@ -41,7 +45,8 @@ suite("Roo Code Letta E2E", function () {
 				apiProvider: "letta",
 				lettaApiKey: apiKey,
 				lettaBaseUrl: baseUrl,
-				lettaModelId: agentId,
+				apiModelId: agentId,
+				lettaModelId: "claude-opus-4-6",
 				lettaConversationMode: "new_task",
 			} as Record<string, unknown>,
 			text: "Hello! Please reply to me by saying exactly the phrase: 'Roo Code Letta Integration is successfully working!'",

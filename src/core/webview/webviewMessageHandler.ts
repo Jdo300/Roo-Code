@@ -1154,8 +1154,16 @@ export const webviewMessageHandler = async (
 		}
 		case "updateLettaAgentModel": {
 			const agentId = message.values?.agentId
-			const llmConfig = message.values?.llmConfig
-			if (!agentId || !llmConfig) break
+			const modelId = message.values?.modelId
+			if (!agentId || !modelId) break
+
+			const modelIdStr = String(modelId)
+			let providerType = "openai"
+			if (modelIdStr.includes("claude") || modelIdStr.startsWith("anthropic/")) {
+				providerType = "anthropic"
+			} else if (modelIdStr.includes("gemini") || modelIdStr.startsWith("google/")) {
+				providerType = "gemini"
+			}
 
 			const { apiConfiguration: config } = await provider.getState()
 			const baseUrl = config.lettaBaseUrl || "https://api.letta.com/v1"
@@ -1164,7 +1172,12 @@ export const webviewMessageHandler = async (
 				const response = await fetch(`${baseUrl}/agents/${agentId}`, {
 					method: "PATCH",
 					headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-					body: JSON.stringify({ llm_config: llmConfig }),
+					body: JSON.stringify({
+						model_settings: {
+							name: modelIdStr,
+							provider_type: providerType,
+						},
+					}),
 				})
 				if (!response.ok) {
 					console.debug(`Letta agent model patch failed: ${response.status} ${response.statusText}`)

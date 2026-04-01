@@ -87,8 +87,13 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 	}, [apiConfiguration.lettaModelId])
 
 	// Auto-load agents on mount if credentials already configured (fixes cold-start blank model bug)
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	useEffect(() => { if (lettaApiKey) refreshAgents() }, []) // mount only
+	const refreshAgentsRef = useRef(refreshAgents)
+	refreshAgentsRef.current = refreshAgents
+	const lettaApiKeyRef = useRef(lettaApiKey)
+	lettaApiKeyRef.current = lettaApiKey
+	useEffect(() => {
+		if (lettaApiKeyRef.current) refreshAgentsRef.current()
+	}, []) // mount only
 
 	// Refs for stale-closure-safe callbacks
 	const credentialsRef = useRef({ lettaBaseUrl, lettaApiKey })
@@ -275,13 +280,7 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 					type: "updateLettaAgentModel",
 					values: {
 						agentId: localAgentIdRef.current,
-						llmConfig: {
-							model: selectedModel.model,
-							model_endpoint_type: selectedModel.model_endpoint_type,
-							model_endpoint: selectedModel.model_endpoint,
-							model_wrapper: selectedModel.model_wrapper,
-							context_window: selectedModel.context_window,
-						},
+						modelId: selectedModel.model,
 					},
 				})
 			}

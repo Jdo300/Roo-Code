@@ -1,5 +1,5 @@
 import { Anthropic } from "@anthropic-ai/sdk"
-import { Letta, LettaError } from "@letta-ai/letta-client"
+import { Letta, LettaError, NotFoundError } from "@letta-ai/letta-client"
 import { ModelInfo } from "@roo-code/types"
 import { ApiHandlerOptions } from "../../shared/api"
 import { ApiHandler, ApiHandlerCreateMessageMetadata } from "../index"
@@ -25,6 +25,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 
 	// Cache workspace conversation ID across calls to avoid re-listing every time
 	private workspaceConversationId: string | undefined
+	// new_task mode: track the current task ID and its conversation to avoid creating one per createMessage call
+	private newTaskConversationId: string | undefined
+	private newTaskId: string | undefined
+	// Track last-patched model to avoid redundant agents.update calls
+	private lastPatchedModelId: string | undefined
 
 	// Cache the hash of the last system prompt synced to the agent block
 	private lastSystemPromptHash: string | undefined
@@ -41,7 +46,12 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			try {
 				const block = await this.client.agents.blocks.retrieve(BLOCK_LABEL, { agent_id: agentId })
 				existingValue = block.value
-			} catch {
+			} catch (retrieveErr) {
+				// Only treat a 404 as "block not found" — other errors (network, 500) should bail out
+				if (!(retrieveErr instanceof NotFoundError)) {
+					console.warn("[LettaHandler] Unexpected error retrieving roo_system block:", retrieveErr)
+					return
+				}
 				// Block doesn't exist — create and attach it
 				try {
 					const newBlock = await this.client.blocks.create({
@@ -92,9 +102,17 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		}
 
 		if (mode === "new_task") {
+			// Reuse the same conversation for all createMessage calls within one Roo Code task.
+			// Only create a fresh conversation when the task ID changes (i.e. a new task starts).
+			const taskId = metadata?.taskId
+			if (taskId && taskId === this.newTaskId && this.newTaskConversationId) {
+				return this.newTaskConversationId
+			}
 			try {
 				const conv = await this.client.conversations.create({ agent_id: agentId })
-				console.debug(`[LettaHandler] Created new conversation: ${conv.id}`)
+				this.newTaskId = taskId
+				this.newTaskConversationId = conv.id
+				console.debug(`[LettaHandler] Created new task conversation: ${conv.id} (taskId=${taskId})`)
 				return conv.id
 			} catch (e) {
 				console.warn("[LettaHandler] Could not create conversation:", e)
@@ -156,56 +174,87 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 
 		// Map Anthropic message format to Letta's expected format.
 		// We use role/content strings natively; tool calls and tool results are also mapped.
-		const lettaMessages: { role: "user" | "assistant"; content: string; tool_calls?: unknown[]; name?: string }[] =
-			messages.flatMap((msg: Anthropic.Messages.MessageParam) => {
-				if (msg.role === "user") {
-					if (Array.isArray(msg.content)) {
-						const content = msg.content
-							.filter((part) => part.type === "text" || part.type === "image")
-							.map((part) => (part.type === "text" ? part.text : ""))
-							.join("\n")
+		const lettaMessages: {
+			role: "user" | "assistant"
+			content: string | any[]
+			tool_calls?: unknown[]
+			name?: string
+		}[] = messages.flatMap((msg: Anthropic.Messages.MessageParam) => {
+			if (msg.role === "user") {
+				if (Array.isArray(msg.content)) {
+					// Build content: text as string, image parts as Letta ImageContent objects.
+					const textContent = msg.content
+						.filter((part) => part.type === "text")
+						.map((part: Anthropic.Messages.TextBlockParam) => part.text)
+						.join("\n")
+					const imageContent = msg.content
+						.filter((part) => part.type === "image")
+						.map((part: Anthropic.Messages.ImageBlockParam) => {
+							if (part.source.type === "base64") {
+								return {
+									type: "image" as const,
+									source: {
+										type: "base64" as const,
+										data: part.source.data,
+										media_type: part.source.media_type,
+									},
+								}
+							} else if (part.source.type === "url") {
+								return {
+									type: "image" as const,
+									source: { type: "url" as const, url: (part.source as any).url },
+								}
+							}
+							return null
+						})
+						.filter(Boolean)
+					// Use content array when images present, plain string otherwise
+					const content: string | any[] =
+						imageContent.length > 0
+							? [...(textContent ? [{ type: "text", text: textContent }] : []), ...imageContent]
+							: textContent
 
-						const toolReturns = msg.content
-							.filter((part) => part.type === "tool_result")
-							.map((part: Anthropic.Messages.ToolResultBlockParam) => ({
-								role: "user" as const,
-								name: part.tool_use_id,
-								content: typeof part.content === "string" ? part.content : JSON.stringify(part.content),
-							}))
+					const toolReturns = msg.content
+						.filter((part) => part.type === "tool_result")
+						.map((part: Anthropic.Messages.ToolResultBlockParam) => ({
+							role: "user" as const,
+							name: part.tool_use_id,
+							content: typeof part.content === "string" ? part.content : JSON.stringify(part.content),
+						}))
 
-						const result: typeof lettaMessages = []
-						if (content) result.push({ role: "user", content })
-						if (toolReturns.length > 0) result.push(...toolReturns)
-						return result
-					}
-					return [{ role: "user", content: String(msg.content) }]
-				} else if (msg.role === "assistant") {
-					if (Array.isArray(msg.content)) {
-						const content = msg.content
-							.filter((part) => part.type === "text")
-							.map((part: Anthropic.Messages.TextBlockParam) => part.text)
-							.join("\n")
-
-						const toolCalls = msg.content
-							.filter((part) => part.type === "tool_use")
-							.map((part: Anthropic.Messages.ToolUseBlockParam) => ({
-								id: part.id,
-								type: "function",
-								function: {
-									name: part.name,
-									arguments: typeof part.input === "string" ? part.input : JSON.stringify(part.input),
-								},
-							}))
-
-						if (toolCalls.length > 0) {
-							return [{ role: "assistant", content: content || "", tool_calls: toolCalls }]
-						}
-						return [{ role: "assistant", content }]
-					}
-					return [{ role: "assistant", content: String(msg.content) }]
+					const result: typeof lettaMessages = []
+					if (content) result.push({ role: "user", content })
+					if (toolReturns.length > 0) result.push(...toolReturns)
+					return result
 				}
-				return [{ role: "user", content: String((msg as { content: unknown }).content) }]
-			})
+				return [{ role: "user", content: String(msg.content) }]
+			} else if (msg.role === "assistant") {
+				if (Array.isArray(msg.content)) {
+					const content = msg.content
+						.filter((part) => part.type === "text")
+						.map((part: Anthropic.Messages.TextBlockParam) => part.text)
+						.join("\n")
+
+					const toolCalls = msg.content
+						.filter((part) => part.type === "tool_use")
+						.map((part: Anthropic.Messages.ToolUseBlockParam) => ({
+							id: part.id,
+							type: "function",
+							function: {
+								name: part.name,
+								arguments: typeof part.input === "string" ? part.input : JSON.stringify(part.input),
+							},
+						}))
+
+					if (toolCalls.length > 0) {
+						return [{ role: "assistant", content: content || "", tool_calls: toolCalls }]
+					}
+					return [{ role: "assistant", content }]
+				}
+				return [{ role: "assistant", content: String(msg.content) }]
+			}
+			return [{ role: "user", content: String((msg as { content: unknown }).content) }]
+		})
 
 		// When a conversation_id is set, Letta maintains full history internally.
 		// Only send messages from the last user turn onward to avoid duplicating history.
@@ -226,7 +275,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		// has its model configured in Letta Cloud.
 		const modelId = this.options.lettaModelId || ""
 		const isAgentUUID = modelId.startsWith("agent-") || /^[0-9a-f-]{36}$/.test(modelId)
-		if (modelId && !isAgentUUID && modelId !== "letta-default") {
+		if (modelId && !isAgentUUID && modelId !== "letta-default" && modelId !== this.lastPatchedModelId) {
 			let providerType = "openai"
 			if (modelId.includes("claude") || modelId.startsWith("anthropic/")) {
 				providerType = "anthropic"
@@ -241,6 +290,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				})
 				// Invalidate model cache so next getModel() reflects new llm_config
 				this.cachedModelInfo = undefined
+				this.lastPatchedModelId = modelId
 				console.debug(`[LettaHandler] Patched agent ${agentId} model to: ${modelId} (${providerType})`)
 			} catch (e) {
 				console.warn("[LettaHandler] Could not patch agent model settings:", e)

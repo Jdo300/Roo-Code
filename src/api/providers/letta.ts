@@ -26,6 +26,60 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 	// Cache workspace conversation ID across calls to avoid re-listing every time
 	private workspaceConversationId: string | undefined
 
+	// Cache the hash of the last system prompt synced to the agent block
+	private lastSystemPromptHash: string | undefined
+
+	private async syncSystemPromptBlock(agentId: string, systemPrompt: string): Promise<void> {
+		const BLOCK_LABEL = "roo_system"
+		const hash = this.hashString(systemPrompt)
+		if (hash === this.lastSystemPromptHash) {
+			return
+		}
+
+		try {
+			let existingValue: string | undefined
+			try {
+				const block = await this.client.agents.blocks.retrieve(BLOCK_LABEL, { agent_id: agentId })
+				existingValue = block.value
+			} catch {
+				// Block doesn't exist — create and attach it
+				try {
+					const newBlock = await this.client.blocks.create({
+						label: BLOCK_LABEL,
+						value: systemPrompt,
+						description: "Roo Code system prompt (auto-synced)",
+					})
+					await this.client.agents.blocks.attach(newBlock.id!, { agent_id: agentId })
+					this.lastSystemPromptHash = hash
+					console.debug("[LettaHandler] Created and attached roo_system block")
+					return
+				} catch (createErr) {
+					console.warn("[LettaHandler] Could not create roo_system block:", createErr)
+					return
+				}
+			}
+
+			if (existingValue !== systemPrompt) {
+				await this.client.agents.blocks.update(BLOCK_LABEL, {
+					agent_id: agentId,
+					value: systemPrompt,
+				})
+				console.debug("[LettaHandler] Updated roo_system block (content changed)")
+			}
+			this.lastSystemPromptHash = hash
+		} catch (e) {
+			console.warn("[LettaHandler] Could not sync system prompt block:", e)
+		}
+	}
+
+	private hashString(str: string): string {
+		let hash = 5381
+		for (let i = 0; i < str.length; i++) {
+			hash = ((hash << 5) + hash + str.charCodeAt(i)) & 0xffffffff
+		}
+		return hash.toString(36)
+	}
+
 	private async getOrCreateConversation(
 		agentId: string,
 		metadata?: ApiHandlerCreateMessageMetadata,
@@ -158,10 +212,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			? lettaMessages.slice(lettaMessages.map((m) => m.role).lastIndexOf("user"))
 			: lettaMessages
 
-		// Prepend system prompt as a user-role context message (Letta Code pattern).
-		// This gives the agent workspace context without overriding its configured persona.
-		if (systemPrompt && messagesToSend.length > 0) {
-			messagesToSend.unshift({ role: "user", content: `[Task Context]\n${systemPrompt}` })
+		// Sync system prompt to a dedicated core memory block on the agent.
+		// This avoids sending the full system prompt as a user message every turn,
+		// which would clutter the context window. Only updates when content changes.
+		if (systemPrompt) {
+			await this.syncSystemPromptBlock(agentId, systemPrompt)
 		}
 
 		// Patch agent model settings before sending messages to prevent "model-unknown" 429 errors.
@@ -303,16 +358,15 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		}
 	}
 
+	// Cached model info fetched from the agent on first call
+	private cachedModelInfo: { id: string; info: ModelInfo } | undefined
+
 	override getModel(): { id: string; info: ModelInfo } {
-		// lettaModelId = the LLM model string (e.g. "letta/letta-free")
-		// apiModelId   = the Letta Agent UUID — NOT a model, must NOT be returned here
-		const modelId = this.options.lettaModelId || "letta-default"
-		if (!this.options.lettaModelId) {
-			console.warn(
-				"[LettaHandler] lettaModelId is not set — using placeholder. Select a model in Letta provider settings.",
-			)
+		if (this.cachedModelInfo) {
+			return this.cachedModelInfo
 		}
-		return {
+		const modelId = this.options.lettaModelId || "letta-default"
+		const defaults = {
 			id: modelId,
 			info: {
 				maxTokens: 16_384,
@@ -324,6 +378,38 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				outputPrice: 0,
 				description: "Letta Agent (model configured per-agent in Letta Cloud)",
 			},
+		}
+		// Async fetch to populate cache for subsequent calls
+		this.fetchAndCacheModelInfo().catch(() => {})
+		return defaults
+	}
+
+	private async fetchAndCacheModelInfo(): Promise<void> {
+		const agentId = this.options.apiModelId
+		if (!agentId) return
+		try {
+			const agent = await this.client.agents.retrieve(agentId)
+			const llm = (agent as any).llm_config || {}
+			const modelId = this.options.lettaModelId || llm.model || "letta-default"
+			const isVisionModel = /claude|gpt-4|gemini/i.test(modelId)
+			this.cachedModelInfo = {
+				id: modelId,
+				info: {
+					maxTokens: llm.max_tokens || 16_384,
+					contextWindow: llm.context_window || 128_000,
+					supportsImages: isVisionModel,
+					supportsComputerUse: false,
+					supportsPromptCache: false,
+					inputPrice: 0,
+					outputPrice: 0,
+					description: `Letta Agent (${llm.model || "unknown model"})`,
+				},
+			}
+			console.debug(
+				`[LettaHandler] Cached model info: ${modelId}, ctx=${llm.context_window}, max=${llm.max_tokens}, vision=${isVisionModel}`,
+			)
+		} catch (e) {
+			console.warn("[LettaHandler] Could not fetch agent model info:", e)
 		}
 	}
 }

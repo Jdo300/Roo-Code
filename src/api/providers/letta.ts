@@ -364,6 +364,12 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 	// Cached model info fetched from the agent on first call
 	private cachedModelInfo: { id: string; info: ModelInfo } | undefined
 
+	/** Clear the model info cache — call this when the user refreshes agents or models */
+	public clearCachedModelInfo(): void {
+		this.cachedModelInfo = undefined
+		console.debug("[LettaHandler] Model info cache cleared")
+	}
+
 	override getModel(): { id: string; info: ModelInfo } {
 		if (this.cachedModelInfo) {
 			return this.cachedModelInfo

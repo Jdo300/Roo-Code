@@ -150,6 +150,8 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 	const refreshAgents = useCallback(async () => {
 		setAgentsLoading(true)
 		setAgentsError(null)
+		// Clear cached model info so next request pulls fresh agent/model data
+		vscode.postMessage({ type: "clearLettaModelCache" })
 		try {
 			const agents = await getLettaAgents(credentialsRef.current)
 			setAgentsList(agents)
@@ -388,7 +390,10 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 					<button
 						className="text-xs text-vscode-textLink-foreground bg-transparent border-0 cursor-pointer p-0"
 						style={{ opacity: modelsLoading ? 0.5 : 1 }}
-						onClick={() => refetchModels()}
+						onClick={() => {
+							vscode.postMessage({ type: "clearLettaModelCache" })
+							refetchModels()
+						}}
 						disabled={modelsLoading}>
 						{modelsLoading ? "Loading..." : "↻ Refresh"}
 					</button>

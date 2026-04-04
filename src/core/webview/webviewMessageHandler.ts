@@ -1247,6 +1247,17 @@ export const webviewMessageHandler = async (
 			}
 			break
 		}
+		case "clearLettaModelCache": {
+			// Clear cached model info on the current LettaHandler so the next request fetches fresh
+			const currentTask = provider.getCurrentTask()
+			if (currentTask) {
+				const handler = (currentTask as any).api as any
+				if (typeof handler?.clearCachedModelInfo === "function") {
+					handler.clearCachedModelInfo()
+				}
+			}
+			break
+		}
 		case "requestRooModels": {
 			// Specific handler for Roo models only - flushes cache to ensure fresh auth token is used
 			try {

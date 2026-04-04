@@ -1101,11 +1101,14 @@ export const webviewMessageHandler = async (
 				if (response.ok) {
 					const data = (await response.json()) as any
 					const conversations = Array.isArray(data)
-						? data.map((c: any) => ({ id: c.id || c.conversation_id, name: c.name || c.id }))
+						? data.map((c: any) => ({
+								id: c.id || c.conversation_id,
+								name: c.name || c.summary || "default",
+							}))
 						: Array.isArray(data?.conversations)
 							? data.conversations.map((c: any) => ({
 									id: c.id || c.conversation_id,
-									name: c.name || c.id,
+									name: c.name || c.summary || "default",
 								}))
 							: []
 					provider.postMessageToWebview({ type: "lettaConversations", lettaConversations: { conversations } })
@@ -1184,6 +1187,29 @@ export const webviewMessageHandler = async (
 				}
 			} catch (error) {
 				console.debug("Letta agent model patch failed:", error)
+			}
+			break
+		}
+		case "resetLettaAgent": {
+			const agentId = message.values?.agentId
+			if (!agentId) break
+
+			const { apiConfiguration: config } = await provider.getState()
+			const baseUrl = config.lettaBaseUrl || "https://api.letta.com/v1"
+			const apiKey = config.lettaApiKey || "not-provided"
+			try {
+				// Clear all messages (resetting agent state)
+				const response = await fetch(`${baseUrl}/agents/${agentId}/messages`, {
+					method: "DELETE",
+					headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+				})
+				if (!response.ok) {
+					console.debug(`Letta agent reset failed: ${response.status} ${response.statusText}`)
+				} else {
+					console.debug(`Letta agent ${agentId} reset successfully`)
+				}
+			} catch (error) {
+				console.debug("Letta agent reset failed:", error)
 			}
 			break
 		}

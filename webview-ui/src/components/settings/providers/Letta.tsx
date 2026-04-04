@@ -355,24 +355,13 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 					</p>
 				)}
 
-				{agentsList.length > 0 ? (
-					<StyledSelect
-						value={localAgentId}
-						onChange={handleAgentChange}
-						options={agentsList.map((a) => ({ id: a.id, label: `${a.name} (${a.id.slice(0, 8)}...)` }))}
-						placeholder="— Select an agent —"
-					/>
-				) : (
-					<VSCodeTextField
-						value={localAgentId}
-						onInput={(e: any) => {
-							setLocalAgentId(e.target?.value)
-							setApiConfigurationField("apiModelId", e.target?.value)
-						}}
-						placeholder="agent-id-...">
-						{agentsLoading ? "Loading agents..." : "Enter ID, or click ↻ Refresh to list agents"}
-					</VSCodeTextField>
-				)}
+				<StyledSelect
+					value={localAgentId}
+					onChange={handleAgentChange}
+					options={agentsList.map((a) => ({ id: a.id, label: `${a.name} (${a.id.slice(0, 8)}...)` }))}
+					placeholder={agentsLoading ? "Loading agents..." : "— Select an agent —"}
+					disabled={agentsLoading}
+				/>
 				<p className="text-xs text-vscode-descriptionForeground">The Letta Agent to connect to.</p>
 			</div>
 
@@ -405,27 +394,13 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 					</p>
 				)}
 
-				{models.length > 0 ? (
-					<StyledSelect
-						value={localModelId}
-						onChange={handleModelChange}
-						options={models.map((m) => ({ id: m.model, label: m.model }))}
-						placeholder="— Select Model —"
-						disabled={!localAgentId}
-					/>
-				) : (
-					<VSCodeTextField
-						value={localModelId}
-						onInput={(e: any) => handleModelChange(e.target?.value)}
-						placeholder="model-id"
-						disabled={!localAgentId}>
-						{modelsLoading
-							? "Loading models..."
-							: !localAgentId
-								? "Select an agent first"
-								: "Enter Model ID manually"}
-					</VSCodeTextField>
-				)}
+				<StyledSelect
+					value={localModelId}
+					onChange={handleModelChange}
+					options={models.map((m) => ({ id: m.model, label: m.model }))}
+					placeholder={modelsLoading ? "Loading models..." : "— Select Model —"}
+					disabled={!localAgentId || modelsLoading}
+				/>
 				<p className="text-xs text-vscode-descriptionForeground">
 					The LLM model powering this agent. Auto-populated when you select an agent.
 				</p>
@@ -471,25 +446,13 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 						</p>
 					)}
 
-					{conversationsList.length > 0 ? (
-						<StyledSelect
-							value={localConvId}
-							onChange={handleConvIdChange}
-							options={conversationsList.map((c) => ({ id: c.id, label: c.name || c.id }))}
-							placeholder="— Select a conversation —"
-						/>
-					) : (
-						<VSCodeTextField
-							value={localConvId}
-							onInput={(e: any) => handleConvIdChange(e.target?.value)}
-							placeholder="conversation-id-...">
-							{!localAgentId
-								? "Select an agent first"
-								: conversationsLoading
-									? "Loading conversations..."
-									: "Enter ID manually, or click ↻ Refresh"}
-						</VSCodeTextField>
-					)}
+					<StyledSelect
+						value={localConvId}
+						onChange={handleConvIdChange}
+						options={conversationsList.map((c) => ({ id: c.id, label: c.name || c.id }))}
+						placeholder={conversationsLoading ? "Loading..." : "— Select a conversation —"}
+						disabled={!localAgentId || conversationsLoading}
+					/>
 					<p className="text-xs text-vscode-descriptionForeground">
 						The specific conversation to use for all messages.
 					</p>

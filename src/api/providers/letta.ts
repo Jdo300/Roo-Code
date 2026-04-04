@@ -186,6 +186,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					parameters: fn.parameters,
 				}
 			})
+		let needsCancelAfterStream = false
 
 		try {
 			const stream = await this.client.agents.messages.stream(agentId, {
@@ -220,6 +221,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 
 				// Tool calls — both regular and approval-gated ones
 				if (msgType === "tool_call_message" || msgType === "approval_request_message") {
+					// approval_request_message = Letta's approval gate for client_tools.
+					// Cancel the pending run after the stream so the next turn doesn't 409.
+					if (msgType === "approval_request_message") {
+						needsCancelAfterStream = true
+					}
 					const toolCall = chunk.tool_call ?? {}
 					const toolCalls: any[] = chunk.tool_calls ?? (toolCall.name ? [toolCall] : [])
 
@@ -245,6 +251,17 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 						cacheReadTokens: usage.cached_input_tokens,
 					}
 					continue
+				}
+			}
+
+			// If agent paused on approval_request, cancel the run so the
+			// tool result can be sent without a 409 conflict on the next turn.
+			if (needsCancelAfterStream) {
+				try {
+					await this.client.agents.messages.cancel(agentId)
+					console.debug("[LettaHandler] Cancelled pending approval.")
+				} catch (cancelErr) {
+					console.warn("[LettaHandler] Could not cancel approval:", cancelErr)
 				}
 			}
 		} catch (e: any) {

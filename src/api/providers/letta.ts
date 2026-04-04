@@ -239,6 +239,8 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					// @ts-expect-error — model_settings is valid but not yet typed in the SDK wrapper
 					model_settings: { name: modelId, provider_type: providerType },
 				})
+				// Invalidate model cache so next getModel() reflects new llm_config
+				this.cachedModelInfo = undefined
 				console.debug(`[LettaHandler] Patched agent ${agentId} model to: ${modelId} (${providerType})`)
 			} catch (e) {
 				console.warn("[LettaHandler] Could not patch agent model settings:", e)

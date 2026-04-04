@@ -1157,30 +1157,18 @@ export const webviewMessageHandler = async (
 		}
 		case "updateLettaAgentModel": {
 			const agentId = message.values?.agentId
-			const modelId = message.values?.modelId
-			if (!agentId || !modelId) break
-
-			const modelIdStr = String(modelId)
-			let providerType = "openai"
-			if (modelIdStr.includes("claude") || modelIdStr.startsWith("anthropic/")) {
-				providerType = "anthropic"
-			} else if (modelIdStr.includes("gemini") || modelIdStr.startsWith("google/")) {
-				providerType = "gemini"
-			}
+			const modelHandle = message.values?.modelHandle // expects "provider/model-name" handle
+			if (!agentId || !modelHandle) break
 
 			const { apiConfiguration: config } = await provider.getState()
-			const baseUrl = config.lettaBaseUrl || "https://api.letta.com/v1"
+			const baseUrl = (config.lettaBaseUrl || "https://api.letta.com/v1").replace(/\/v1$/, "")
 			const apiKey = config.lettaApiKey || "not-provided"
 			try {
-				const response = await fetch(`${baseUrl}/agents/${agentId}`, {
+				// Letta PATCH /agents/{id} requires { model: "provider/model-name" } handle format
+				const response = await fetch(`${baseUrl}/v1/agents/${agentId}`, {
 					method: "PATCH",
 					headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-					body: JSON.stringify({
-						model_settings: {
-							name: modelIdStr,
-							provider_type: providerType,
-						},
-					}),
+					body: JSON.stringify({ model: modelHandle }),
 				})
 				if (!response.ok) {
 					console.debug(`Letta agent model patch failed: ${response.status} ${response.statusText}`)

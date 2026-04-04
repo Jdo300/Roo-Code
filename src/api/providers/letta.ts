@@ -276,27 +276,27 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		const modelId = this.options.lettaModelId || ""
 		const isAgentUUID = modelId.startsWith("agent-") || /^[0-9a-f-]{36}$/.test(modelId)
 		if (modelId && !isAgentUUID && modelId !== "letta-default" && modelId !== this.lastPatchedModelId) {
-			let providerType = "openai"
-			if (modelId.includes("claude") || modelId.startsWith("anthropic/")) {
-				providerType = "anthropic"
-			} else if (modelId.includes("gemini") || modelId.startsWith("google/")) {
-				providerType = "gemini"
-			}
+			// Build the model handle (format: provider/model-name) required by the Letta PATCH API.
+			// If lettaModelId already contains a slash it IS the handle; otherwise prepend provider prefix.
+			const handle = modelId.includes("/")
+				? modelId
+				: (() => {
+						if (modelId.includes("claude") || modelId.startsWith("anthropic")) return `anthropic/${modelId}`
+						if (modelId.includes("gemini") || modelId.startsWith("google")) return `google/${modelId}`
+						return `openai/${modelId}`
+					})()
 
 			try {
-				await this.client.agents.update(agentId, {
-					// @ts-expect-error — model_settings is valid but not yet typed in the SDK wrapper
-					model_settings: { name: modelId, provider_type: providerType },
-				})
+				await this.client.agents.update(agentId, { model: handle })
 				// Invalidate model cache so next getModel() reflects new llm_config
 				this.cachedModelInfo = undefined
 				this.lastPatchedModelId = modelId
-				console.debug(`[LettaHandler] Patched agent ${agentId} model to: ${modelId} (${providerType})`)
+				console.debug(`[LettaHandler] Patched agent ${agentId} model to: ${handle}`)
 			} catch (e) {
 				console.warn("[LettaHandler] Could not patch agent model settings:", e)
 			}
 		} else {
-			console.debug(`[LettaHandler] Skipping model patch — using agents existing model config`)
+			console.debug(`[LettaHandler] Skipping model patch — model unchanged or not set`)
 		}
 
 		// Build client_tools array in the flat schema Letta expects.

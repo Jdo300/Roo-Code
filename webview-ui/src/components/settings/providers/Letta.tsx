@@ -280,15 +280,17 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 		localModelIdRef.current = newModelId
 		setApiConfigurationField("lettaModelId", newModelId)
 
-		// If an agent is selected, update its model configuration on the server
+		// If an agent is selected, update its model configuration on the server.
+		// Pass the catalog handle (e.g. "anthropic/claude-opus-4-6") which is what the Letta
+		// PATCH API requires — NOT the short model name.
 		if (localAgentId && localAgentIdRef.current) {
 			const selectedModel = models.find((m) => m.model === newModelId)
-			if (selectedModel) {
+			if (selectedModel?.handle) {
 				vscode.postMessage({
 					type: "updateLettaAgentModel",
 					values: {
 						agentId: localAgentIdRef.current,
-						modelId: selectedModel.model,
+						modelHandle: selectedModel.handle,
 					},
 				})
 			}

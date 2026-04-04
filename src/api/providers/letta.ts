@@ -430,7 +430,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			info: {
 				maxTokens: 16_384,
 				contextWindow: 128_000,
-				supportsImages: false,
+				supportsImages: this.options.lettaSupportsImages === true,
 				supportsComputerUse: false,
 				supportsPromptCache: false,
 				inputPrice: 0,

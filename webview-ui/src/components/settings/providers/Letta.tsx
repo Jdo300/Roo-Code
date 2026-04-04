@@ -92,15 +92,6 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 		setLocalSupportsImages(apiConfiguration.lettaSupportsImages === true)
 	}, [apiConfiguration.lettaSupportsImages])
 
-	// Auto-load agents on mount if credentials already configured (fixes cold-start blank model bug)
-	const refreshAgentsRef = useRef(refreshAgents)
-	refreshAgentsRef.current = refreshAgents
-	const lettaApiKeyRef = useRef(lettaApiKey)
-	lettaApiKeyRef.current = lettaApiKey
-	useEffect(() => {
-		if (lettaApiKeyRef.current) refreshAgentsRef.current()
-	}, []) // mount only
-
 	// Refs for stale-closure-safe callbacks
 	const credentialsRef = useRef({ lettaBaseUrl, lettaApiKey })
 	credentialsRef.current = { lettaBaseUrl, lettaApiKey }
@@ -164,6 +155,16 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 			setAgentsLoading(false)
 		}
 	}, [applyAgentModelIfMissing])
+
+	// Auto-load agents on mount if credentials already configured (fixes cold-start blank model bug)
+	// This block is placed AFTER refreshAgents is declared to avoid temporal dead zone issues.
+	const refreshAgentsRef = useRef(refreshAgents)
+	refreshAgentsRef.current = refreshAgents
+	const lettaApiKeyRef = useRef(lettaApiKey)
+	lettaApiKeyRef.current = lettaApiKey
+	useEffect(() => {
+		if (lettaApiKeyRef.current) refreshAgentsRef.current()
+	}, []) // mount only
 
 	// Letta Models Hook
 	const { models, modelsLoading, modelsError, refetchModels } = useLettaModels({ lettaBaseUrl, lettaApiKey })

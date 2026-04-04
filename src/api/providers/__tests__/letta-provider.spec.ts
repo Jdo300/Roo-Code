@@ -63,7 +63,15 @@ describe("LettaHandler", () => {
 			// @ts-ignore
 			handler.cachedModelInfo = {
 				id: "planted-model",
-				info: { contextWindow: 999_999, maxTokens: 9999, supportsImages: false },
+				info: {
+					contextWindow: 999_999,
+					maxTokens: 9999,
+					supportsImages: false,
+					supportsPromptCache: false,
+					supportsComputerUse: false,
+					inputPrice: 0,
+					outputPrice: 0,
+				},
 			}
 			expect(handler.getModel().id).toBe("planted-model")
 

@@ -21,6 +21,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			apiKey: options.lettaApiKey || "not-provided",
 			baseURL: sdkBase,
 		})
+		// Kick off model info fetch immediately so contextWindow/maxTokens are ready
+		// by the time Roo Code first calls getModel() for the context bar.
+		if (options.apiModelId && options.lettaApiKey) {
+			this.fetchAndCacheModelInfo().catch(() => {})
+		}
 	}
 
 	// Cache workspace conversation ID across calls to avoid re-listing every time
@@ -30,6 +35,8 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 	private newTaskId: string | undefined
 	// Track last-patched model to avoid redundant agents.update calls
 	private lastPatchedModelId: string | undefined
+	// Guard against concurrent fetchAndCacheModelInfo calls (e.g. multiple getModel() calls before cache warms)
+	private modelInfoFetchInProgress: Promise<void> | undefined
 
 	// Cache the hash of the last system prompt synced to the agent block
 	private lastSystemPromptHash: string | undefined
@@ -262,42 +269,45 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			? lettaMessages.slice(lettaMessages.map((m) => m.role).lastIndexOf("user"))
 			: lettaMessages
 
-		// Sync system prompt to a dedicated core memory block on the agent.
-		// This avoids sending the full system prompt as a user message every turn,
-		// which would clutter the context window. Only updates when content changes.
-		if (systemPrompt) {
-			await this.syncSystemPromptBlock(agentId, systemPrompt)
-		}
-
-		// Patch agent model settings before sending messages to prevent "model-unknown" 429 errors.
-		// Patch model settings if lettaModelId looks like a real model name (not an agent UUID).
-		// When lettaModelId is unset or is an agent UUID, skip patching — the agent already
-		// has its model configured in Letta Cloud.
+		// Run block sync and model patch concurrently — they're independent and both idempotent.
+		// Parallelising cuts first-message latency roughly in half vs serial awaits.
 		const modelId = this.options.lettaModelId || ""
 		const isAgentUUID = modelId.startsWith("agent-") || /^[0-9a-f-]{36}$/.test(modelId)
-		if (modelId && !isAgentUUID && modelId !== "letta-default" && modelId !== this.lastPatchedModelId) {
-			// Build the model handle (format: provider/model-name) required by the Letta PATCH API.
-			// If lettaModelId already contains a slash it IS the handle; otherwise prepend provider prefix.
-			const handle = modelId.includes("/")
-				? modelId
-				: (() => {
-						if (modelId.includes("claude") || modelId.startsWith("anthropic")) return `anthropic/${modelId}`
-						if (modelId.includes("gemini") || modelId.startsWith("google")) return `google/${modelId}`
-						return `openai/${modelId}`
-					})()
+		const needsPatch = modelId && !isAgentUUID && modelId !== "letta-default" && modelId !== this.lastPatchedModelId
 
-			try {
-				await this.client.agents.update(agentId, { model: handle })
-				// Invalidate model cache so next getModel() reflects new llm_config
-				this.cachedModelInfo = undefined
-				this.lastPatchedModelId = modelId
-				console.debug(`[LettaHandler] Patched agent ${agentId} model to: ${handle}`)
-			} catch (e) {
-				console.warn("[LettaHandler] Could not patch agent model settings:", e)
-			}
-		} else {
-			console.debug(`[LettaHandler] Skipping model patch — model unchanged or not set`)
-		}
+		const patchModel = needsPatch
+			? (async () => {
+					// Build handle: "provider/model-name" format required by the Letta PATCH API.
+					const handle = modelId.includes("/")
+						? modelId // already a full handle (e.g. "anthropic/claude-sonnet-4-5")
+						: (() => {
+								if (modelId.includes("claude") || modelId.startsWith("anthropic"))
+									return `anthropic/${modelId}`
+								if (modelId.includes("gemini") || modelId.startsWith("google"))
+									return `google/${modelId}`
+								// "auto", "letta-free" etc. use the letta/ prefix
+								if (modelId === "auto" || modelId.startsWith("letta")) return `letta/${modelId}`
+								return `openai/${modelId}`
+							})()
+					try {
+						await this.client.agents.update(agentId, { model: handle })
+						this.cachedModelInfo = undefined
+						console.debug(`[LettaHandler] Patched agent ${agentId} model to: ${handle}`)
+					} catch (e) {
+						console.warn("[LettaHandler] Could not patch agent model settings:", e)
+					} finally {
+						// Always mark as attempted — prevents retry loop when patch fails
+						this.lastPatchedModelId = modelId
+					}
+				})()
+			: Promise.resolve()
+
+		// Sync system prompt block (hash-guarded, usually instant after first call) +
+		// model patch — run in parallel so neither blocks the other before streaming starts.
+		await Promise.all([
+			systemPrompt ? this.syncSystemPromptBlock(agentId, systemPrompt) : Promise.resolve(),
+			patchModel,
+		])
 
 		// Build client_tools array in the flat schema Letta expects.
 		// metadata.tools is OpenAI.Chat.ChatCompletionTool[] (a union that includes

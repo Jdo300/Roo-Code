@@ -1,53 +1,26 @@
 import { Anthropic } from "@anthropic-ai/sdk"
+import { Letta, LettaError } from "@letta-ai/letta-client"
 import { ModelInfo } from "@roo-code/types"
 import { ApiHandlerOptions } from "../../shared/api"
 import { ApiHandler, ApiHandlerCreateMessageMetadata } from "../index"
 import { ApiStream } from "../transform/stream"
-import { convertToOpenAiMessages } from "../transform/openai-format"
 import { BaseProvider } from "./base-provider"
 
 export class LettaHandler extends BaseProvider implements ApiHandler {
 	private options: ApiHandlerOptions
-	private baseUrl: string
-	private apiKey: string
+	private client: Letta
 
 	constructor(options: ApiHandlerOptions) {
 		super()
 		this.options = options
-		this.baseUrl = this.options.lettaBaseUrl || "https://api.letta.com/v1"
-		this.apiKey = this.options.lettaApiKey || "not-provided"
-	}
-
-	private async getHeaders() {
-		return {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${this.apiKey}`,
-		}
-	}
-
-	private async getLettaConversations(agentId: string) {
-		const response = await fetch(`${this.baseUrl}/agents/${agentId}/conversations`, {
-			method: "GET",
-			headers: await this.getHeaders(),
+		const baseUrl = options.lettaBaseUrl || "https://api.letta.com/v1"
+		// The SDK accepts a base URL without the /v1 suffix for some environments,
+		// but Letta Cloud uses /v1 as the base. We strip /v1 if needed.
+		const sdkBase = baseUrl.endsWith("/v1") ? baseUrl.slice(0, -3) : baseUrl
+		this.client = new Letta({
+			apiKey: options.lettaApiKey || "not-provided",
+			baseURL: sdkBase,
 		})
-		if (!response.ok) return []
-		const data = (await response.json()) as any
-		return data.conversations || data || []
-	}
-
-	private async createLettaConversation(agentId: string, name: string) {
-		try {
-			const response = await fetch(`${this.baseUrl}/agents/${agentId}/conversations`, {
-				method: "POST",
-				headers: await this.getHeaders(),
-				body: JSON.stringify({ name }),
-			})
-			if (!response.ok) return undefined
-			const data = (await response.json()) as any
-			return data.id || data.conversation_id
-		} catch (e) {
-			return undefined
-		}
 	}
 
 	private async getOrCreateConversation(
@@ -61,20 +34,34 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		}
 
 		if (mode === "new_task") {
-			// Create a new conversation using the taskId as the name
 			const name = `Roo Task - ${metadata?.taskId || Date.now()}`
-			return await this.createLettaConversation(agentId, name)
+			try {
+				// @ts-expect-error — conversations API may not be typed yet in the SDK
+				const conv = await this.client.agents.conversations.create(agentId, { name })
+				return conv.id || conv.conversation_id
+			} catch {
+				return undefined
+			}
 		}
 
 		if (mode === "auto_workspace") {
-			// Find a conversation named "Roo Code Workspace" or create it
 			const name = "Roo Code Workspace"
-			const conversations = await this.getLettaConversations(agentId)
-			const existing = conversations.find((c: any) => c.name === name)
-			if (existing) {
-				return existing.id || existing.conversation_id
+			try {
+				// @ts-expect-error — conversations API may not be typed yet in the SDK
+				const convList = await this.client.agents.conversations.list(agentId)
+				const conversations = convList?.conversations || convList || []
+				const existing = conversations.find(
+					(c: { name?: string; id?: string; conversation_id?: string }) => c.name === name,
+				)
+				if (existing) {
+					return existing.id || existing.conversation_id
+				}
+				// @ts-expect-error — conversations API may not be typed yet in the SDK
+				const conv = await this.client.agents.conversations.create(agentId, { name })
+				return conv.id || conv.conversation_id
+			} catch {
+				return undefined
 			}
-			return await this.createLettaConversation(agentId, name)
 		}
 
 		return undefined
@@ -95,97 +82,76 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		try {
 			conversationId = await this.getOrCreateConversation(agentId, metadata)
 		} catch (e) {
-			// Ignore error, Letta Cloud does not support conversations endpoint
 			console.warn("Could not get or create Letta conversation, falling back to agent default memory", e)
 		}
 
-		// For Letta, we map our messages to Letta's expected format.
-		// We'll use the /v1/agents/{agent_id}/messages API which accepts role/content strings natively.
-		// However, we need to handle the streaming SSE response correctly.
+		// Map Anthropic message format to Letta's expected format.
+		// We use role/content strings natively; tool calls and tool results are also mapped.
+		const lettaMessages: { role: "user" | "assistant"; content: string; tool_calls?: unknown[]; name?: string }[] =
+			messages.flatMap((msg: Anthropic.Messages.MessageParam) => {
+				if (msg.role === "user") {
+					if (Array.isArray(msg.content)) {
+						const content = msg.content
+							.filter((part) => part.type === "text" || part.type === "image")
+							.map((part) => (part.type === "text" ? part.text : ""))
+							.join("\n")
 
-		const lettaMessages: any[] = messages.flatMap((msg: Anthropic.Messages.MessageParam) => {
-			if (msg.role === "user") {
-				if (Array.isArray(msg.content)) {
-					// Split user messages and tool returns
-					const content = msg.content
-						.filter((part) => part.type === "text" || part.type === "image")
-						.map((part) => (part.type === "text" ? part.text : ""))
-						.join("\n")
+						const toolReturns = msg.content
+							.filter((part) => part.type === "tool_result")
+							.map((part: Anthropic.Messages.ToolResultBlockParam) => ({
+								role: "user" as const,
+								name: part.tool_use_id,
+								content: typeof part.content === "string" ? part.content : JSON.stringify(part.content),
+							}))
 
-					const toolReturns = msg.content
-						.filter((part) => part.type === "tool_result")
-						.map((part: any) => ({
-							role: "user", // Letta uses user role for tool_return_message equivalents sent into creating a turn
-							name: part.tool_use_id, // Important: pass the call ID
-							content: typeof part.content === "string" ? part.content : JSON.stringify(part.content),
-						}))
-
-					const result: any[] = []
-					if (content) {
-						result.push({ role: "user", content })
+						const result: typeof lettaMessages = []
+						if (content) result.push({ role: "user", content })
+						if (toolReturns.length > 0) result.push(...toolReturns)
+						return result
 					}
-					if (toolReturns.length > 0) {
-						result.push(...toolReturns)
+					return [{ role: "user", content: String(msg.content) }]
+				} else if (msg.role === "assistant") {
+					if (Array.isArray(msg.content)) {
+						const content = msg.content
+							.filter((part) => part.type === "text")
+							.map((part: Anthropic.Messages.TextBlockParam) => part.text)
+							.join("\n")
+
+						const toolCalls = msg.content
+							.filter((part) => part.type === "tool_use")
+							.map((part: Anthropic.Messages.ToolUseBlockParam) => ({
+								id: part.id,
+								type: "function",
+								function: {
+									name: part.name,
+									arguments: typeof part.input === "string" ? part.input : JSON.stringify(part.input),
+								},
+							}))
+
+						if (toolCalls.length > 0) {
+							return [{ role: "assistant", content: content || "", tool_calls: toolCalls }]
+						}
+						return [{ role: "assistant", content }]
 					}
-					return result
+					return [{ role: "assistant", content: String(msg.content) }]
 				}
-				return [{ role: "user", content: msg.content }]
-			} else if (msg.role === "assistant") {
-				if (Array.isArray(msg.content)) {
-					const content = msg.content
-						.filter((part) => part.type === "text")
-						.map((part: any) => part.text)
-						.join("\n")
+				return [{ role: "user", content: String((msg as { content: unknown }).content) }]
+			})
 
-					const toolCalls = msg.content
-						.filter((part) => part.type === "tool_use")
-						.map((part: any) => ({
-							id: part.id,
-							type: "function",
-							function: {
-								name: part.name,
-								arguments: typeof part.input === "string" ? part.input : JSON.stringify(part.input),
-							},
-						}))
-
-					if (toolCalls.length > 0) {
-						return [{ role: "assistant", content: content || "", tool_calls: toolCalls }]
-					}
-					return [{ role: "assistant", content }]
-				}
-				return [{ role: "assistant", content: msg.content }]
-			}
-			return [msg]
-		})
-
-		// Letta agents have their own persona/system prompt configured in the Letta platform.
-		// Following the Letta Code CLI pattern: pass workspace context as a user-role message
-		// rather than a system-role message, so the agent receives task context without having
-		// its identity overwritten by Roo's persona prompt.
-		//
-		// When a conversation_id is set, Letta maintains full history internally — only send
-		// messages from the last user turn onward to avoid duplicating history.
+		// When a conversation_id is set, Letta maintains full history internally.
+		// Only send messages from the last user turn onward to avoid duplicating history.
 		const messagesToSend = conversationId
-			? lettaMessages.slice(lettaMessages.map((m: any) => m.role).lastIndexOf("user"))
+			? lettaMessages.slice(lettaMessages.map((m) => m.role).lastIndexOf("user"))
 			: lettaMessages
 
 		// Prepend system prompt as a user-role context message (Letta Code pattern).
-		// This gives the agent workspace context (current file, task, CWD) without
-		// overriding its configured persona.
+		// This gives the agent workspace context without overriding its configured persona.
 		if (systemPrompt && messagesToSend.length > 0) {
-			messagesToSend.unshift({
-				role: "user",
-				content: `[Task Context]\n${systemPrompt}`,
-			})
+			messagesToSend.unshift({ role: "user", content: `[Task Context]\n${systemPrompt}` })
 		}
 
-		// Letta Cloud requires the agent to be configured with the model before sending messages.
-		// Even if the UI sent an update, external changes or agent recreation might have lost it.
-		// We patch the agent's model settings dynamically here to prevent the "model-unknown" 429 error.
+		// Patch agent model settings before sending messages to prevent "model-unknown" 429 errors.
 		const modelId = this.options.lettaModelId || "letta-default"
-
-		// Determine provider_type from modelId for the Letta API schema
-		// Note: Letta Cloud uses a discriminated union for model_settings.
 		let providerType = "openai"
 		if (modelId.includes("claude") || modelId.startsWith("anthropic/")) {
 			providerType = "anthropic"
@@ -193,199 +159,114 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			providerType = "gemini"
 		}
 
-		console.debug(`[LettaHandler] PATCH Attempt - Agent ID: ${agentId}, Model: ${modelId} (${providerType})`)
-
 		try {
-			// Verified schema for Letta Cloud agents
-			const patchPayload = {
-				model_settings: {
-					name: modelId,
-					provider_type: providerType,
-				},
-			}
-			console.debug(`[LettaHandler] PATCH Payload: ${JSON.stringify(patchPayload)}`)
+			await this.client.agents.update(agentId, {
+				// @ts-expect-error — model_settings is valid but not yet typed in the SDK wrapper
+				model_settings: { name: modelId, provider_type: providerType },
+			})
+			console.debug(`[LettaHandler] Patched agent ${agentId} model to: ${modelId} (${providerType})`)
+		} catch (e) {
+			console.warn("[LettaHandler] Could not patch agent model settings:", e)
+		}
 
-			const patchResponse = await fetch(`${this.baseUrl}/agents/${agentId}`, {
-				method: "PATCH",
-				headers: await this.getHeaders(),
-				body: JSON.stringify(patchPayload),
+		// Build client_tools array in the flat schema Letta expects.
+		// metadata.tools is OpenAI.Chat.ChatCompletionTool[] (a union that includes
+		// ChatCompletionCustomTool which has no .function). Filter to function tools only.
+		const clientTools = metadata?.tools
+			?.filter((t) => t.type === "function")
+			.map((tool) => {
+				const fn = (tool as any).function as {
+					name: string
+					description?: string
+					parameters?: Record<string, unknown>
+				}
+				return {
+					name: fn.name,
+					description: fn.description ?? "",
+					parameters: fn.parameters,
+				}
 			})
 
-			const patchText = await patchResponse.text()
-			console.debug(`[LettaHandler] PATCH Status: ${patchResponse.status} ${patchResponse.statusText}`)
-			console.debug(`[LettaHandler] PATCH Response: ${patchText}`)
-
-			if (!patchResponse.ok) {
-				console.debug(
-					`[LettaHandler] Failed to patch agent model config: ${patchResponse.status} ${patchResponse.statusText}`,
-				)
-			}
-		} catch (e: any) {
-			console.debug(`[LettaHandler] PATCH Error: ${e.message}`)
-			console.debug("[LettaHandler] Error patching Letta agent model config:", e)
-		}
-
-		// Using native fetch for the Letta REST API instead of the OpenAI client
-		// so we can explicitly pass conversation_id and handle Letta's unique stream format if needed.
-		const response = await fetch(`${this.baseUrl}/agents/${agentId}/messages/stream`, {
-			method: "POST",
-			headers: await this.getHeaders(),
-			body: JSON.stringify({
-				messages: messagesToSend,
-				conversation_id: conversationId,
-				client_tools: metadata?.tools?.map((tool: any) => {
-					return {
-						name: tool.name,
-						description: tool.description,
-						parameters: this.convertToolSchemaForOpenAI(tool.input_schema),
-					}
-				}),
-				// stream: true, // Letta's /stream endpoint implies streaming
-			}),
-		})
-
-		if (!response.ok) {
-			const text = await response.text()
-			if (response.status === 409) {
-				throw new Error(
-					`Letta API Error: 409 (Conflict). The agent is waiting for tool approval from a previous attempt. Please go to Letta Cloud, click "Reset Agent" or "Clear All Messages", or create a new agent to continue.`,
-				)
-			}
-			throw new Error(`Letta API Error: ${response.status} - ${text}`)
-		}
-
-		if (!response.body) {
-			throw new Error("No response body from Letta")
-		}
-
-		const reader = response.body.getReader()
-		const decoder = new TextDecoder()
-		let buffer = ""
-
 		try {
-			while (true) {
-				const { done, value } = await reader.read()
-				if (done) break
+			const stream = await this.client.agents.messages.stream(agentId, {
+				messages: messagesToSend as any,
+				// @ts-expect-error — conversation_id and client_tools are valid but some types may be incomplete
+				conversation_id: conversationId,
+				client_tools: clientTools as any,
+			})
 
-				buffer += decoder.decode(value, { stream: true })
-				const lines = buffer.split("\n")
-				buffer = lines.pop() || ""
+			for await (const chunk of stream as AsyncIterable<any>) {
+				const msgType = chunk.message_type
 
-				for (const line of lines) {
-					const trimmed = line.trim()
-					require("fs").appendFileSync("/tmp/letta_raw.log", "LINE: " + trimmed + "\n")
-					if (!trimmed.startsWith("data: ")) continue
+				if (!msgType) continue
 
-					const dataStr = trimmed.slice(6).trim()
-					if (dataStr === "[DONE]") return
-					if (!dataStr) continue
-
-					try {
-						const parsed = JSON.parse(dataStr)
-
-						// Check for Letta SSE error messages (like 409 Conflict)
-						if (parsed.message_type === "error_message") {
-							const errMsg = parsed.message || parsed.detail || ""
-							if (errMsg.includes("CONFLICT")) {
-								throw new Error(
-									`Letta API Error: 409 (Conflict). The agent is waiting for tool approval from a previous attempt. Please go to Letta Cloud, click "Reset Agent" or "Clear All Messages", or create a new agent to continue.`,
-								)
-							}
-							throw new Error(`Letta Provider Error: ${errMsg}`)
-						}
-
-						// Handle standard OpenAI-compatible delta format Letta might emit
-						if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
-							const delta = parsed.choices[0].delta
-							if (delta.content) {
-								yield { type: "text", text: delta.content }
-							}
-
-							// Letta tool calls mapped to Roo
-							if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
-								for (const tool of delta.tool_calls) {
-									yield {
-										type: "tool_call_partial",
-										index: tool.index || 0,
-										id: tool.id,
-										name: tool.function?.name,
-										arguments: tool.function?.arguments,
-									}
-								}
-							}
-						}
-						// Handle native LettaMessage format
-						const msg = parsed
-						if (msg) {
-							// Letta native messages can be internal monologues or function calls
-							if (
-								msg.message_type === "assistant_message" ||
-								msg.message_type === "reasoning_message" ||
-								msg.role === "assistant"
-							) {
-								const text = msg.content || msg.reasoning
-								if (typeof text === "string" && text.length > 0) {
-									yield { type: "text", text: text }
-								}
-							}
-							if (msg.message_type === "approval_request_message" || msg.tool_calls) {
-								const toolCalls = msg.tool_calls || (msg.tool_call ? [msg.tool_call] : [])
-								for (const tool of toolCalls) {
-									yield {
-										type: "tool_call",
-										id: tool.tool_call_id || tool.id || "tool_" + Date.now(),
-										name: tool.name || tool.function?.name,
-										arguments:
-											typeof tool.arguments === "object"
-												? JSON.stringify(tool.arguments)
-												: tool.arguments || tool.function?.arguments,
-									}
-								}
-							} else if (msg.tool_call) {
-								yield {
-									type: "tool_call",
-									id: msg.tool_call.id || msg.id || "tool_" + Date.now(),
-									name:
-										typeof msg.tool_call.name === "string"
-											? msg.tool_call.name
-											: msg.tool_call.function?.name,
-									arguments:
-										typeof msg.tool_call.arguments === "object"
-											? JSON.stringify(msg.tool_call.arguments)
-											: msg.tool_call.arguments || msg.tool_call.function?.arguments,
-								}
-							} else if (msg.function_call) {
-								yield {
-									type: "tool_call",
-									id: msg.id || "tool_" + Date.now(),
-									name: msg.function_call.name,
-									arguments:
-										typeof msg.function_call.arguments === "object"
-											? JSON.stringify(msg.function_call.arguments)
-											: msg.function_call.arguments,
-								}
-							}
-						}
-					} catch (e: any) {
-						// Propagate our specific API errors instead of swallowing them
-						if (e.message && e.message.includes("Letta API Error")) {
-							throw e
-						}
-						// Ignore JSON parse errors on incomplete chunks
-						console.warn("Letta SSE parse error", e, dataStr)
+				// Surface agent thinking as text — useful for debugging
+				if (msgType === "reasoning_message") {
+					const reasoning = chunk.reasoning
+					if (reasoning && typeof reasoning === "string" && reasoning.length > 0) {
+						yield { type: "text", text: reasoning }
 					}
+					continue
+				}
+
+				// Main response content
+				if (msgType === "assistant_message") {
+					const content = chunk.content
+					if (content && typeof content === "string" && content.length > 0) {
+						yield { type: "text", text: content }
+					}
+					continue
+				}
+
+				// Tool calls — both regular and approval-gated ones
+				if (msgType === "tool_call_message" || msgType === "approval_request_message") {
+					const toolCall = chunk.tool_call ?? {}
+					const toolCalls: any[] = chunk.tool_calls ?? (toolCall.name ? [toolCall] : [])
+
+					for (const tool of toolCalls) {
+						const args = tool.arguments
+						yield {
+							type: "tool_call",
+							id: tool.tool_call_id || "tool_" + Date.now(),
+							name: tool.name || "",
+							arguments: typeof args === "object" && args !== null ? JSON.stringify(args) : (args ?? ""),
+						}
+					}
+					continue
+				}
+
+				// Usage statistics
+				if (msgType === "usage_statistics") {
+					const usage = chunk
+					yield {
+						type: "usage",
+						inputTokens: (usage.prompt_tokens ?? 0) - (usage.cached_input_tokens ?? 0),
+						outputTokens: usage.completion_tokens ?? 0,
+						cacheReadTokens: usage.cached_input_tokens,
+					}
+					continue
 				}
 			}
-		} finally {
-			reader.releaseLock()
+		} catch (e: any) {
+			if (e instanceof LettaError) {
+				// Check for the 409 conflict that occurs in the response body when agent requires approval
+				const body = JSON.stringify((e as any).body ?? "")
+				const statusCode = (e as any).status || (e as any).statusCode
+				if (statusCode === 409 || body.includes("CONFLICT") || body.includes("waiting for approval")) {
+					throw new Error(
+						`Letta API Error: 409 (Conflict). The agent is waiting for tool approval from a previous attempt. ` +
+							`Please go to Letta Cloud, click "Reset Agent" or "Clear All Messages", or create a new agent to continue.`,
+					)
+				}
+				throw new Error(`Letta API Error: ${statusCode || "Unknown"} - ${e.message}`)
+			}
+			throw e
 		}
 	}
 
 	override getModel(): { id: string; info: ModelInfo } {
 		// lettaModelId = the LLM model string (e.g. "letta/letta-free")
 		// apiModelId   = the Letta Agent UUID — NOT a model, must NOT be returned here
-		// If lettaModelId is not set yet, use a safe placeholder so we never send
-		// the agent UUID as the model to Letta Cloud.
 		const modelId = this.options.lettaModelId || "letta-default"
 		if (!this.options.lettaModelId) {
 			console.warn(
@@ -395,16 +276,15 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		return {
 			id: modelId,
 			info: {
-				maxTokens: 8192,
-				contextWindow: 128000,
+				maxTokens: 16_384,
+				contextWindow: 128_000,
 				supportsImages: false,
 				supportsComputerUse: false,
 				supportsPromptCache: false,
-			} as ModelInfo,
+				inputPrice: 0,
+				outputPrice: 0,
+				description: "Letta Agent (model configured per-agent in Letta Cloud)",
+			},
 		}
-	}
-
-	override async countTokens(content: Anthropic.Messages.ContentBlockParam[]): Promise<number> {
-		return 0 // TODO: Implement token counting via Letta if supported
 	}
 }

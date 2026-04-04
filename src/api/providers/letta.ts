@@ -23,6 +23,9 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		})
 	}
 
+	// Cache workspace conversation ID across calls to avoid re-listing every time
+	private workspaceConversationId: string | undefined
+
 	private async getOrCreateConversation(
 		agentId: string,
 		metadata?: ApiHandlerCreateMessageMetadata,
@@ -34,32 +37,43 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		}
 
 		if (mode === "new_task") {
-			const name = `Roo Task - ${metadata?.taskId || Date.now()}`
 			try {
-				// @ts-expect-error — conversations API may not be typed yet in the SDK
-				const conv = await this.client.agents.conversations.create(agentId, { name })
-				return conv.id || conv.conversation_id
-			} catch {
+				const conv = await this.client.conversations.create({ agent_id: agentId })
+				console.debug(`[LettaHandler] Created new conversation: ${conv.id}`)
+				return conv.id
+			} catch (e) {
+				console.warn("[LettaHandler] Could not create conversation:", e)
 				return undefined
 			}
 		}
 
 		if (mode === "auto_workspace") {
-			const name = "Roo Code Workspace"
+			// Return cached conversation if we already resolved it this session
+			if (this.workspaceConversationId) {
+				return this.workspaceConversationId
+			}
 			try {
-				// @ts-expect-error — conversations API may not be typed yet in the SDK
-				const convList = await this.client.agents.conversations.list(agentId)
-				const conversations = convList?.conversations || convList || []
-				const existing = conversations.find(
-					(c: { name?: string; id?: string; conversation_id?: string }) => c.name === name,
-				)
-				if (existing) {
-					return existing.id || existing.conversation_id
+				const conversations = await this.client.conversations.list({ agent_id: agentId })
+				// Reuse the most recent non-archived conversation, or create a new one
+				const convArray = Array.isArray(conversations) ? conversations : []
+				const active = convArray.filter((c: any) => !c.archived)
+				if (active.length > 0) {
+					// Use most recently updated conversation
+					active.sort((a: any, b: any) => {
+						const aTime = a.last_message_at || a.updated_at || ""
+						const bTime = b.last_message_at || b.updated_at || ""
+						return bTime.localeCompare(aTime)
+					})
+					this.workspaceConversationId = active[0].id
+					console.debug(`[LettaHandler] Reusing conversation: ${this.workspaceConversationId}`)
+					return this.workspaceConversationId
 				}
-				// @ts-expect-error — conversations API may not be typed yet in the SDK
-				const conv = await this.client.agents.conversations.create(agentId, { name })
-				return conv.id || conv.conversation_id
-			} catch {
+				const conv = await this.client.conversations.create({ agent_id: agentId })
+				this.workspaceConversationId = conv.id
+				console.debug(`[LettaHandler] Created workspace conversation: ${conv.id}`)
+				return this.workspaceConversationId
+			} catch (e) {
+				console.warn("[LettaHandler] Could not get/create workspace conversation:", e)
 				return undefined
 			}
 		}

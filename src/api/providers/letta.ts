@@ -151,22 +151,30 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		}
 
 		// Patch agent model settings before sending messages to prevent "model-unknown" 429 errors.
-		const modelId = this.options.lettaModelId || "letta-default"
-		let providerType = "openai"
-		if (modelId.includes("claude") || modelId.startsWith("anthropic/")) {
-			providerType = "anthropic"
-		} else if (modelId.includes("gemini") || modelId.startsWith("google/")) {
-			providerType = "gemini"
-		}
+		// Patch model settings if lettaModelId looks like a real model name (not an agent UUID).
+		// When lettaModelId is unset or is an agent UUID, skip patching — the agent already
+		// has its model configured in Letta Cloud.
+		const modelId = this.options.lettaModelId || ""
+		const isAgentUUID = modelId.startsWith("agent-") || /^[0-9a-f-]{36}$/.test(modelId)
+		if (modelId && !isAgentUUID && modelId !== "letta-default") {
+			let providerType = "openai"
+			if (modelId.includes("claude") || modelId.startsWith("anthropic/")) {
+				providerType = "anthropic"
+			} else if (modelId.includes("gemini") || modelId.startsWith("google/")) {
+				providerType = "gemini"
+			}
 
-		try {
-			await this.client.agents.update(agentId, {
-				// @ts-expect-error — model_settings is valid but not yet typed in the SDK wrapper
-				model_settings: { name: modelId, provider_type: providerType },
-			})
-			console.debug(`[LettaHandler] Patched agent ${agentId} model to: ${modelId} (${providerType})`)
-		} catch (e) {
-			console.warn("[LettaHandler] Could not patch agent model settings:", e)
+			try {
+				await this.client.agents.update(agentId, {
+					// @ts-expect-error — model_settings is valid but not yet typed in the SDK wrapper
+					model_settings: { name: modelId, provider_type: providerType },
+				})
+				console.debug(`[LettaHandler] Patched agent ${agentId} model to: ${modelId} (${providerType})`)
+			} catch (e) {
+				console.warn("[LettaHandler] Could not patch agent model settings:", e)
+			}
+		} else {
+			console.debug(`[LettaHandler] Skipping model patch — using agents existing model config`)
 		}
 
 		// Build client_tools array in the flat schema Letta expects.

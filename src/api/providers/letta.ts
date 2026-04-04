@@ -48,6 +48,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 						label: BLOCK_LABEL,
 						value: systemPrompt,
 						description: "Roo Code system prompt (auto-synced)",
+						read_only: true,
 					})
 					await this.client.agents.blocks.attach(newBlock.id!, { agent_id: agentId })
 					this.lastSystemPromptHash = hash

@@ -119,6 +119,9 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				const conv = await this.client.conversations.create({ agent_id: agentId })
 				this.newTaskId = taskId
 				this.newTaskConversationId = conv.id
+				// Label immediately so it shows a meaningful name in the manual-select dropdown
+				const taskDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })
+				this.client.conversations.update(conv.id, { summary: `Roo Code Task – ${taskDate}` }).catch(() => {})
 				console.debug(`[LettaHandler] Created new task conversation: ${conv.id} (taskId=${taskId})`)
 				return conv.id
 			} catch (e) {
@@ -134,22 +137,26 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			}
 			try {
 				const conversations = await this.client.conversations.list({ agent_id: agentId })
-				// Reuse the most recent non-archived conversation, or create a new one
 				const convArray = Array.isArray(conversations) ? conversations : []
 				const active = convArray.filter((c: any) => !c.archived)
 				if (active.length > 0) {
-					// Use most recently updated conversation
-					active.sort((a: any, b: any) => {
+					// Prefer conversations we previously labeled as workspace conversations,
+					// so new_task conversations don't get picked up accidentally.
+					const labeled = active.filter((c: any) => c.summary?.startsWith("Roo Code Workspace"))
+					const candidates = labeled.length > 0 ? labeled : active
+					candidates.sort((a: any, b: any) => {
 						const aTime = a.last_message_at || a.updated_at || ""
 						const bTime = b.last_message_at || b.updated_at || ""
 						return bTime.localeCompare(aTime)
 					})
-					this.workspaceConversationId = active[0].id
+					this.workspaceConversationId = candidates[0].id
 					console.debug(`[LettaHandler] Reusing conversation: ${this.workspaceConversationId}`)
 					return this.workspaceConversationId
 				}
 				const conv = await this.client.conversations.create({ agent_id: agentId })
 				this.workspaceConversationId = conv.id
+				// Label immediately so it can be found again next session
+				this.client.conversations.update(conv.id, { summary: "Roo Code Workspace" }).catch(() => {})
 				console.debug(`[LettaHandler] Created workspace conversation: ${conv.id}`)
 				return this.workspaceConversationId
 			} catch (e) {

@@ -1100,17 +1100,52 @@ export const webviewMessageHandler = async (
 
 				if (response.ok) {
 					const data = (await response.json()) as any
-					const conversations = Array.isArray(data)
-						? data.map((c: any) => ({
-								id: c.id || c.conversation_id,
-								name: c.name || c.summary || "default",
-							}))
+					const rawList: any[] = Array.isArray(data)
+						? data
 						: Array.isArray(data?.conversations)
-							? data.conversations.map((c: any) => ({
-									id: c.id || c.conversation_id,
-									name: c.name || c.summary || "default",
-								}))
+							? data.conversations
 							: []
+
+					// Helper: format a date string as "Apr 4"
+					const fmtDate = (iso?: string) => {
+						if (!iso) return null
+						try {
+							return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+						} catch {
+							return null
+						}
+					}
+
+					const formatConv = (c: any) => {
+						const id = c.id || c.conversation_id
+						const summary = c.summary || c.name
+						const msgDate = fmtDate(c.last_message_at)
+						const createDate = fmtDate(c.created_at)
+						// Label: prefer summary with date prefix, fall back to dated placeholder
+						const label = summary
+							? msgDate
+								? `${msgDate} — ${summary}`
+								: summary
+							: msgDate
+								? `${msgDate} — no messages yet`
+								: createDate
+									? `Created ${createDate}`
+									: "Unnamed conversation"
+						return { id, name: label, _lastMsg: c.last_message_at || "", _created: c.created_at || "" }
+					}
+
+					// Sort: conversations with messages first (most recent at top), empty ones at bottom
+					const conversations = rawList
+						.filter((c: any) => !c.archived)
+						.map(formatConv)
+						.sort((a, b) => {
+							if (a._lastMsg && b._lastMsg) return b._lastMsg.localeCompare(a._lastMsg)
+							if (a._lastMsg) return -1
+							if (b._lastMsg) return 1
+							return b._created.localeCompare(a._created)
+						})
+						.map(({ id, name }) => ({ id, name }))
+
 					provider.postMessageToWebview({ type: "lettaConversations", lettaConversations: { conversations } })
 				} else {
 					console.debug(`Letta conversations fetch failed: ${response.status} ${response.statusText}`)

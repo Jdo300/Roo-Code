@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeTextField, VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
 
 import { type ExtensionMessage } from "@roo-code/types"
 import { vscode } from "@src/utils/vscode"
@@ -71,6 +71,9 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 	)
 	const [localConvId, setLocalConvId] = useState<string>(apiConfiguration.lettaConversationId || "")
 	const [localModelId, setLocalModelId] = useState<string>(apiConfiguration.lettaModelId || "")
+	const [localSupportsImages, setLocalSupportsImages] = useState<boolean>(
+		apiConfiguration.lettaSupportsImages === true,
+	)
 
 	// Sync local state when props change externally (e.g. loading saved config)
 	useEffect(() => {
@@ -85,6 +88,9 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 	useEffect(() => {
 		setLocalModelId(apiConfiguration.lettaModelId || "")
 	}, [apiConfiguration.lettaModelId])
+	useEffect(() => {
+		setLocalSupportsImages(apiConfiguration.lettaSupportsImages === true)
+	}, [apiConfiguration.lettaSupportsImages])
 
 	// Auto-load agents on mount if credentials already configured (fixes cold-start blank model bug)
 	const refreshAgentsRef = useRef(refreshAgents)
@@ -403,6 +409,21 @@ export const Letta = ({ apiConfiguration, setApiConfigurationField }: LettaProps
 				/>
 				<p className="text-xs text-vscode-descriptionForeground">
 					The LLM model powering this agent. Auto-populated when you select an agent.
+				</p>
+				<div className="flex items-center gap-2 mt-1">
+					<VSCodeCheckbox
+						checked={localSupportsImages}
+						onChange={(e: any) => {
+							const val = e.target?.checked === true
+							setLocalSupportsImages(val)
+							setApiConfigurationField("lettaSupportsImages", val)
+						}}>
+						<span className="text-xs">Model supports image input (vision)</span>
+					</VSCodeCheckbox>
+				</div>
+				<p className="text-xs text-vscode-descriptionForeground">
+					Enable if your model can process images (screenshots, diagrams). Letta does not expose this
+					information automatically.
 				</p>
 			</div>
 

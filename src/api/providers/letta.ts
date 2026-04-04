@@ -391,16 +391,42 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		const agentId = this.options.apiModelId
 		if (!agentId) return
 		try {
+			// Fetch agent to get llm_config (current model name, defaults)
 			const agent = await this.client.agents.retrieve(agentId)
 			const llm = (agent as any).llm_config || {}
 			const modelId = this.options.lettaModelId || llm.model || "letta-default"
-			const isVisionModel = /claude|gpt-4|gemini/i.test(modelId)
+
+			// Look up the model in Letta's model catalog to get accurate capacity values.
+			// The catalog has real context_window and max_tokens for every available model.
+			let catalogContextWindow: number | undefined
+			let catalogMaxTokens: number | undefined
+			try {
+				const allModels = await this.client.models.list()
+				// Match by model field (short name like "gpt-4o") — this is what lettaModelId stores
+				const catalogEntry = (allModels as any[]).find(
+					(m: any) => m.model === modelId || m.model === llm.model || m.handle === modelId,
+				)
+				if (catalogEntry) {
+					catalogContextWindow = catalogEntry.context_window || catalogEntry.max_context_window
+					catalogMaxTokens = catalogEntry.max_tokens
+					console.debug(
+						`[LettaHandler] Matched model in catalog: ${catalogEntry.handle}, ctx=${catalogContextWindow}, max=${catalogMaxTokens}`,
+					)
+				}
+			} catch (modelErr) {
+				console.warn("[LettaHandler] Could not fetch models catalog:", modelErr)
+			}
+
+			// supportsImages: user-controlled in provider settings.
+			// Letta does not expose image capability in its model catalog.
+			const supportsImages = this.options.lettaSupportsImages === true
+
 			this.cachedModelInfo = {
 				id: modelId,
 				info: {
-					maxTokens: llm.max_tokens || 16_384,
-					contextWindow: llm.context_window || 128_000,
-					supportsImages: isVisionModel,
+					maxTokens: catalogMaxTokens || llm.max_tokens || 16_384,
+					contextWindow: catalogContextWindow || llm.context_window || 128_000,
+					supportsImages,
 					supportsComputerUse: false,
 					supportsPromptCache: false,
 					inputPrice: 0,
@@ -409,7 +435,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				},
 			}
 			console.debug(
-				`[LettaHandler] Cached model info: ${modelId}, ctx=${llm.context_window}, max=${llm.max_tokens}, vision=${isVisionModel}`,
+				`[LettaHandler] Model info cached: ${modelId}, ctx=${this.cachedModelInfo.info.contextWindow}, max=${this.cachedModelInfo.info.maxTokens}, vision=${supportsImages}`,
 			)
 		} catch (e) {
 			console.warn("[LettaHandler] Could not fetch agent model info:", e)

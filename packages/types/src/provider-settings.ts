@@ -396,6 +396,7 @@ const lettaSchema = apiModelIdProviderModelSchema.extend({
 	lettaConversationMode: z.enum(["manual", "auto_workspace", "new_task"]).optional(),
 	lettaConversationId: z.string().optional(),
 	lettaModelId: z.string().optional(), // Stores the selected LLM model (e.g. gpt-4)
+	lettaSupportsImages: z.boolean().optional(), // Whether the selected model supports image input
 	// "apiModelId" will store the selected Agent ID.
 })
 

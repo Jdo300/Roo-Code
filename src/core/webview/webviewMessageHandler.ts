@@ -1126,11 +1126,7 @@ export const webviewMessageHandler = async (
 							? msgDate
 								? `${msgDate} — ${summary}`
 								: summary
-							: msgDate
-								? `${msgDate} — no messages yet`
-								: createDate
-									? `Created ${createDate}`
-									: "Unnamed conversation"
+							: `Unnamed (${String(id).slice(0, 14)}…)`
 						return { id, name: label, _lastMsg: c.last_message_at || "", _created: c.created_at || "" }
 					}
 

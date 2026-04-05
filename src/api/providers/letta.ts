@@ -377,6 +377,14 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					const toolCalls: any[] = chunk.tool_calls ?? (toolCall.name ? [toolCall] : [])
 
 					for (const tool of toolCalls) {
+						// Skip Letta's internal memory/archival tools — they appear as
+						// tool_call_message too, but Letta handles them internally.
+						// Only forward tool calls that Roo Code itself declared as client_tools,
+						// plus anything arriving via approval_request_message (always a client tool).
+						if (msgType === "tool_call_message") {
+							const isClientTool = clientTools?.some((ct) => ct.name === tool.name)
+							if (!isClientTool) continue
+						}
 						const args = tool.arguments
 						yield {
 							type: "tool_call",

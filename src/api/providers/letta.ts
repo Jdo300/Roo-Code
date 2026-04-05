@@ -434,15 +434,43 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					msg.includes("waiting for approval")
 
 				if (isConflict) {
-					// Auto-cancel so the next send goes through without user intervention.
+					// The agent is paused waiting for a tool-call approval from a previous run.
+					// agents.messages.cancel() requires Redis (not always available on self-hosted).
+					// The correct fix: retrieve the pending approval and deny it — this unblocks the agent.
 					try {
-						await this.client.agents.messages.cancel(agentId)
-						console.debug("[LettaHandler] Auto-cancelled stuck tool approval (409 conflict)")
-					} catch (cancelErr) {
-						console.warn("[LettaHandler] Could not cancel stuck approval:", cancelErr)
+						const agentState = await this.client.agents.retrieve(agentId, {
+							include: ["agent.pending_approval" as any],
+						})
+						const pendingApproval = (agentState as any).pending_approval
+						const toolCallId = pendingApproval?.tool_call?.tool_call_id
+
+						if (toolCallId) {
+							// Deny the approval — the canonical way to unblock the agent.
+							await (this.client.agents.messages as any).create(agentId, {
+								messages: [
+									{
+										type: "approval",
+										approvals: [
+											{
+												approve: false,
+												tool_call_id: toolCallId,
+												reason: "Auto-denied by Roo Code to clear stuck state",
+											},
+										],
+									},
+								],
+							})
+							console.debug("[LettaHandler] Auto-denied stuck approval:", toolCallId)
+						} else {
+							// No pending approval visible — fall back to cancel (requires Redis)
+							await this.client.agents.messages.cancel(agentId)
+							console.debug("[LettaHandler] Cancelled stuck run (no pending approval found)")
+						}
+					} catch (clearErr) {
+						console.warn("[LettaHandler] Could not clear stuck approval:", clearErr)
 					}
 					throw new Error(
-						"Letta: A stuck tool approval was automatically cancelled. Please send your message again to continue.",
+						"Letta: A stuck tool approval was automatically cleared. Please send your message again to continue.",
 					)
 				}
 				throw new Error(`Letta API Error: ${statusCode || "Unknown"} - ${e.message}`)

@@ -1121,12 +1121,16 @@ export const webviewMessageHandler = async (
 						const summary = c.summary || c.name
 						const msgDate = fmtDate(c.last_message_at)
 						const createDate = fmtDate(c.created_at)
-						// Label: prefer summary with date prefix, fall back to dated placeholder
+						// Build a human-readable label: prefer summary (with date), fall back to date, then id prefix
 						const label = summary
 							? msgDate
 								? `${msgDate} — ${summary}`
 								: summary
-							: `Unnamed (${String(id).slice(0, 14)}…)`
+							: msgDate
+								? `${msgDate} — (no summary)`
+								: createDate
+									? `${createDate} — (no summary)`
+									: `Conversation ${String(id).slice(-8)}`
 						return { id, name: label, _lastMsg: c.last_message_at || "", _created: c.created_at || "" }
 					}
 

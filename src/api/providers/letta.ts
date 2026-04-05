@@ -333,7 +333,6 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					parameters: fn.parameters,
 				}
 			})
-		let needsCancelAfterStream = false
 
 		try {
 			const stream = await this.client.agents.messages.stream(agentId, {
@@ -342,140 +341,177 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				conversation_id: conversationId,
 				client_tools: clientTools as any,
 			})
-
-			for await (const chunk of stream as AsyncIterable<any>) {
-				const msgType = chunk.message_type
-
-				if (!msgType) continue
-
-				// Surface agent thinking as text — useful for debugging
-				if (msgType === "reasoning_message") {
-					const reasoning = chunk.reasoning
-					if (reasoning && typeof reasoning === "string" && reasoning.length > 0) {
-						yield { type: "text", text: reasoning }
-					}
-					continue
-				}
-
-				// Main response content
-				if (msgType === "assistant_message") {
-					const content = chunk.content
-					if (content && typeof content === "string" && content.length > 0) {
-						yield { type: "text", text: content }
-					}
-					continue
-				}
-
-				// Tool calls — both regular and approval-gated ones
-				if (msgType === "tool_call_message" || msgType === "approval_request_message") {
-					// approval_request_message = Letta's approval gate for client_tools.
-					// Cancel the pending run after the stream so the next turn doesn't 409.
-					if (msgType === "approval_request_message") {
-						needsCancelAfterStream = true
-					}
-					const toolCall = chunk.tool_call ?? {}
-					const toolCalls: any[] = chunk.tool_calls ?? (toolCall.name ? [toolCall] : [])
-
-					for (const tool of toolCalls) {
-						// Skip Letta's internal memory/archival tools — they appear as
-						// tool_call_message too, but Letta handles them internally.
-						// Only forward tool calls that Roo Code itself declared as client_tools,
-						// plus anything arriving via approval_request_message (always a client tool).
-						if (msgType === "tool_call_message") {
-							const isClientTool = clientTools?.some((ct) => ct.name === tool.name)
-							if (!isClientTool) continue
-						}
-						const args = tool.arguments
-						yield {
-							type: "tool_call",
-							id: tool.tool_call_id || "tool_" + Date.now(),
-							name: tool.name || "",
-							arguments: typeof args === "object" && args !== null ? JSON.stringify(args) : (args ?? ""),
-						}
-					}
-					continue
-				}
-
-				// Usage statistics
-				if (msgType === "usage_statistics") {
-					const usage = chunk
-					yield {
-						type: "usage",
-						inputTokens: (usage.prompt_tokens ?? 0) - (usage.cached_input_tokens ?? 0),
-						outputTokens: usage.completion_tokens ?? 0,
-						cacheReadTokens: usage.cached_input_tokens,
-					}
-					continue
-				}
-			}
-
-			// If agent paused on approval_request, cancel the run so the
-			// tool result can be sent without a 409 conflict on the next turn.
-			if (needsCancelAfterStream) {
-				try {
-					await this.client.agents.messages.cancel(agentId)
-					console.debug("[LettaHandler] Cancelled pending approval.")
-				} catch (cancelErr) {
-					console.warn("[LettaHandler] Could not cancel approval:", cancelErr)
-				}
-			}
+			yield* this.processLettaStream(stream, clientTools)
 		} catch (e: any) {
 			if (e instanceof LettaError) {
-				// 409 conflict: the agent has a stuck tool-call approval from a previous run.
-				// The SDK puts the message in e.message (not e.body), so we check all three places.
-				const body = JSON.stringify((e as any).body ?? "").toLowerCase()
 				const statusCode = (e as any).status || (e as any).statusCode
-				const msg = (e.message || "").toLowerCase()
+				// The 409 body from Letta Cloud is: {"detail": "409: {'code': 'PENDING_APPROVAL', ..., 'pending_request_id': 'message-xxx'}"}
+				const errDetail = String((e as any).body?.detail ?? (e as any).body ?? e.message ?? "")
 				const isConflict =
 					statusCode === 409 ||
-					body.includes("conflict") ||
-					body.includes("waiting for approval") ||
-					msg.includes("conflict") ||
-					msg.includes("waiting for approval")
+					errDetail.toLowerCase().includes("pending_approval") ||
+					errDetail.toLowerCase().includes("waiting for approval") ||
+					errDetail.toLowerCase().includes("conflict")
 
 				if (isConflict) {
-					// The agent is paused waiting for a tool-call approval from a previous run.
-					// agents.messages.cancel() requires Redis (not always available on self-hosted).
-					// The correct fix: retrieve the pending approval and deny it — this unblocks the agent.
+					// Agent is stuck on a pending tool-call approval from a previous run.
+					// Strategy: extract the pending_request_id → get tool_call_id → either
+					// (a) if messagesToSend has matching tool result → approve it and yield agent response
+					// (b) no matching result → deny to clear state → retry stream with original messages
 					try {
-						const agentState = await this.client.agents.retrieve(agentId, {
-							include: ["agent.pending_approval" as any],
-						})
-						const pendingApproval = (agentState as any).pending_approval
-						const toolCallId = pendingApproval?.tool_call?.tool_call_id
+						const pendingIdMatch = errDetail.match(/pending_request_id['": ]+([a-zA-Z0-9_-]+)/)
+						const pendingRequestId = pendingIdMatch?.[1]
+						console.debug("[LettaHandler] 409 conflict, pending_request_id:", pendingRequestId)
 
-						if (toolCallId) {
-							// Deny the approval — the canonical way to unblock the agent.
-							await (this.client.agents.messages as any).create(agentId, {
-								messages: [
-									{
-										type: "approval",
-										approvals: [
-											{
-												approve: false,
-												tool_call_id: toolCallId,
-												reason: "Auto-denied by Roo Code to clear stuck state",
-											},
-										],
-									},
-								],
-							})
-							console.debug("[LettaHandler] Auto-denied stuck approval:", toolCallId)
-						} else {
-							// No pending approval visible — fall back to cancel (requires Redis)
-							await this.client.agents.messages.cancel(agentId)
-							console.debug("[LettaHandler] Cancelled stuck run (no pending approval found)")
+						if (pendingRequestId) {
+							// Fetch recent messages to find the tool_call_id for this pending approval
+							const recentMsgs = await this.client.agents.messages.list(agentId, {
+								limit: 5,
+							} as any)
+							const pendingMsg = (recentMsgs as any[]).find(
+								(m: any) => m.id === pendingRequestId || m.otid === pendingRequestId,
+							)
+							const toolCallId =
+								pendingMsg?.tool_call?.tool_call_id ?? pendingMsg?.tool_calls?.[0]?.tool_call_id
+							console.debug("[LettaHandler] Pending tool_call_id:", toolCallId)
+
+							if (toolCallId) {
+								// Look for a matching tool result in the messages we were trying to send.
+								// Tool results are mapped as { role: 'user', name: toolCallId, content: result }
+								const toolReturn = (messagesToSend as any[]).find(
+									(m: any) => m.role === "user" && m.name === toolCallId,
+								)
+								const hasResult = Boolean(toolReturn)
+								const toolResult = String(toolReturn?.content ?? "")
+								console.debug("[LettaHandler] Tool result found:", hasResult, toolResult.slice(0, 80))
+
+								// Send approval (with result) or denial (to clear stuck state)
+								// Correct format confirmed via API testing: approvals[].type must be "approval"
+								const approvalResp = await (this.client.agents.messages as any).create(agentId, {
+									messages: [
+										{
+											type: "approval",
+											approvals: [
+												{
+													type: "approval",
+													approve: hasResult,
+													tool_call_id: toolCallId,
+													...(toolResult ? { reason: toolResult } : {}),
+												},
+											],
+										},
+									],
+								})
+
+								if (hasResult) {
+									// Approved with tool result — yield agent's response and finish
+									for (const msg of approvalResp?.messages ?? []) {
+										if (msg.message_type === "assistant_message" && msg.content) {
+											yield { type: "text", text: msg.content }
+										}
+									}
+									if (approvalResp?.usage) {
+										const u = approvalResp.usage
+										yield {
+											type: "usage",
+											inputTokens: (u.prompt_tokens ?? 0) - (u.cached_input_tokens ?? 0),
+											outputTokens: u.completion_tokens ?? 0,
+											cacheReadTokens: u.cached_input_tokens,
+										}
+									}
+									console.debug("[LettaHandler] Approved pending tool call with result — done")
+									return
+								} else {
+									// Denied to clear stuck state — retry stream with original messages
+									console.debug("[LettaHandler] Denied stuck approval — retrying stream")
+									const retryStream = await this.client.agents.messages.stream(agentId, {
+										messages: messagesToSend as any,
+										// @ts-expect-error
+										conversation_id: conversationId,
+										client_tools: clientTools as any,
+									})
+									yield* this.processLettaStream(retryStream, clientTools)
+									return
+								}
+							}
 						}
 					} catch (clearErr) {
-						console.warn("[LettaHandler] Could not clear stuck approval:", clearErr)
+						console.warn("[LettaHandler] Could not auto-resolve 409:", clearErr)
 					}
+					// Fallback: could not auto-clear — tell user to retry
 					throw new Error(
-						"Letta: A stuck tool approval was automatically cleared. Please send your message again to continue.",
+						"Letta: The agent has a stuck tool-call approval that could not be auto-cleared. Please try sending your message again.",
 					)
 				}
 				throw new Error(`Letta API Error: ${statusCode || "Unknown"} - ${e.message}`)
 			}
 			throw e
+		}
+	}
+
+	/** Process a Letta streaming response, yielding ApiStream events. */
+	private async *processLettaStream(stream: AsyncIterable<any>, clientTools: any[] | undefined): ApiStream {
+		for await (const chunk of stream) {
+			const msgType = chunk.message_type
+			if (!msgType) continue
+
+			// Surface agent thinking as text — useful for debugging
+			if (msgType === "reasoning_message") {
+				const reasoning = chunk.reasoning
+				if (reasoning && typeof reasoning === "string" && reasoning.length > 0) {
+					yield { type: "text", text: reasoning }
+				}
+				continue
+			}
+
+			// Main response content
+			if (msgType === "assistant_message") {
+				const content = chunk.content
+				if (content && typeof content === "string" && content.length > 0) {
+					yield { type: "text", text: content }
+				}
+				continue
+			}
+
+			// Tool calls — both regular and approval-gated ones.
+			// When approval_request_message arrives, the run stays pending in Letta.
+			// On the NEXT createMessage call, the 409 handler detects the pending run,
+			// matches the tool result in messagesToSend, and approves it automatically.
+			if (msgType === "tool_call_message" || msgType === "approval_request_message") {
+				const toolCall = chunk.tool_call ?? {}
+				const toolCalls: any[] = chunk.tool_calls ?? (toolCall.name ? [toolCall] : [])
+
+				for (const tool of toolCalls) {
+					// Skip Letta's internal memory/archival tools — they appear as
+					// tool_call_message too, but Letta handles them internally.
+					// Only forward tool calls that Roo Code itself declared as client_tools,
+					// plus anything arriving via approval_request_message (always a client tool).
+					if (msgType === "tool_call_message") {
+						const isClientTool = clientTools?.some((ct) => ct.name === tool.name)
+						if (!isClientTool) continue
+					}
+					const args = tool.arguments
+					yield {
+						type: "tool_call",
+						id: tool.tool_call_id || "tool_" + Date.now(),
+						name: tool.name || "",
+						arguments: typeof args === "object" && args !== null ? JSON.stringify(args) : (args ?? ""),
+					}
+				}
+				continue
+			}
+
+			// Usage statistics
+			if (msgType === "usage_statistics") {
+				const usage = chunk
+				yield {
+					type: "usage",
+					inputTokens: (usage.prompt_tokens ?? 0) - (usage.cached_input_tokens ?? 0),
+					outputTokens: usage.completion_tokens ?? 0,
+					cacheReadTokens: usage.cached_input_tokens,
+				}
+				continue
+			}
 		}
 	}
 

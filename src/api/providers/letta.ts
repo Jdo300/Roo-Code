@@ -421,13 +421,28 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			}
 		} catch (e: any) {
 			if (e instanceof LettaError) {
-				// Check for the 409 conflict that occurs in the response body when agent requires approval
-				const body = JSON.stringify((e as any).body ?? "")
+				// 409 conflict: the agent has a stuck tool-call approval from a previous run.
+				// The SDK puts the message in e.message (not e.body), so we check all three places.
+				const body = JSON.stringify((e as any).body ?? "").toLowerCase()
 				const statusCode = (e as any).status || (e as any).statusCode
-				if (statusCode === 409 || body.includes("CONFLICT") || body.includes("waiting for approval")) {
+				const msg = (e.message || "").toLowerCase()
+				const isConflict =
+					statusCode === 409 ||
+					body.includes("conflict") ||
+					body.includes("waiting for approval") ||
+					msg.includes("conflict") ||
+					msg.includes("waiting for approval")
+
+				if (isConflict) {
+					// Auto-cancel so the next send goes through without user intervention.
+					try {
+						await this.client.agents.messages.cancel(agentId)
+						console.debug("[LettaHandler] Auto-cancelled stuck tool approval (409 conflict)")
+					} catch (cancelErr) {
+						console.warn("[LettaHandler] Could not cancel stuck approval:", cancelErr)
+					}
 					throw new Error(
-						`Letta API Error: 409 (Conflict). The agent is waiting for tool approval from a previous attempt. ` +
-							`Please go to Letta Cloud, click "Reset Agent" or "Clear All Messages", or create a new agent to continue.`,
+						"Letta: A stuck tool approval was automatically cancelled. Please send your message again to continue.",
 					)
 				}
 				throw new Error(`Letta API Error: ${statusCode || "Unknown"} - ${e.message}`)

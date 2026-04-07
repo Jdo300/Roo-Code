@@ -338,7 +338,20 @@ function getSelectedModel({
 		}
 		case "letta": {
 			const id = apiConfiguration.lettaModelId || apiConfiguration.apiModelId || defaultModelId
-			return { id, info: undefined }
+			// Return sensible static defaults matching what the backend LettaHandler.getModel() provides.
+			// Without this, model info is undefined → contextWindow falls back to 1 → the context
+			// percentage display shows absurd values like "72600%" instead of a normal percentage.
+			const lettaDefaultInfo: ModelInfo = {
+				maxTokens: 16_384,
+				contextWindow: 128_000,
+				supportsImages: apiConfiguration.lettaSupportsImages === true,
+				supportsComputerUse: false,
+				supportsPromptCache: false,
+				inputPrice: 0,
+				outputPrice: 0,
+				description: "Letta Agent (model configured per-agent in Letta Cloud)",
+			}
+			return { id, info: lettaDefaultInfo }
 		}
 		// case "anthropic":
 		// case "fake-ai":

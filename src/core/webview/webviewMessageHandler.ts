@@ -525,6 +525,17 @@ export const webviewMessageHandler = async (
 								await provider.activateProviderProfile({ name })
 								return
 							}
+						} else {
+							// Config is valid — always re-activate the current profile so that
+							// provider secrets (e.g. lettaApiKey) are re-applied from the profile
+							// JSON store to the in-memory SecretStorage cache. Without this, the
+							// active profile's API key can appear missing after a window reload
+							// even though it's persisted in the profile store.
+							await provider.activateProviderProfile(
+								{ name: currentConfigName },
+								{ persistModeConfig: false, persistTaskHistory: false },
+							)
+							return
 						}
 					}
 

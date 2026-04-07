@@ -498,6 +498,15 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 
 	/** Process a Letta streaming response, yielding ApiStream events. */
 	private async *processLettaStream(stream: AsyncIterable<any>, clientTools: any[] | undefined): ApiStream {
+		// Track whether any Roo Code client tool calls were yielded.
+		// Letta agents often use their own internal tools (e.g. conversation_search,
+		// archival_memory_search) and then reply with plain text. Roo Code requires
+		// every response to contain at least one tool call (the final one being
+		// attempt_completion). If the agent finishes with text only, we auto-inject
+		// a synthetic attempt_completion so Roo Code treats the task as complete.
+		let clientToolCallYielded = false
+		let collectedText = ""
+
 		for await (const chunk of stream) {
 			const msgType = chunk.message_type
 			if (!msgType) continue
@@ -515,6 +524,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			if (msgType === "assistant_message") {
 				const content = chunk.content
 				if (content && typeof content === "string" && content.length > 0) {
+					collectedText += content
 					yield { type: "text", text: content }
 				}
 				continue
@@ -537,6 +547,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 						const isClientTool = clientTools?.some((ct) => ct.name === tool.name)
 						if (!isClientTool) continue
 					}
+					clientToolCallYielded = true
 					const args = tool.arguments
 					yield {
 						type: "tool_call",
@@ -558,6 +569,20 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					cacheReadTokens: usage.cached_input_tokens,
 				}
 				continue
+			}
+		}
+
+		// If the agent sent text without calling any Roo Code client tools, auto-wrap
+		// the response in attempt_completion so Roo Code marks the task complete.
+		// This handles Letta agents that use internal tools (conversation_search, etc.)
+		// and then reply with plain text rather than explicitly calling attempt_completion.
+		if (!clientToolCallYielded && collectedText.trim()) {
+			console.debug("[LettaHandler] Auto-injecting attempt_completion for text-only response")
+			yield {
+				type: "tool_call",
+				id: "auto_attempt_completion_" + Date.now(),
+				name: "attempt_completion",
+				arguments: JSON.stringify({ result: collectedText.trim() }),
 			}
 		}
 	}

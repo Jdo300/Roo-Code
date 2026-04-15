@@ -438,9 +438,24 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 							const toolReturn = (messagesToSend as any[]).find(
 								(m: any) => m.role === "user" && m.name === toolCallId,
 							)
-							const hasResult = Boolean(toolReturn)
-							const toolResult = String(toolReturn?.content ?? "")
-							console.debug("[LettaHandler] Tool result found:", hasResult, toolResult.slice(0, 80))
+							// Also check for tool results in nested content arrays (edge case)
+							const nestedToolReturn = (messagesToSend as any[]).find((m: any) => {
+								if (m.role === "user" && Array.isArray(m.content)) {
+									return m.content.some(
+										(p: any) => p.type === "tool_result" && p.tool_use_id === toolCallId,
+									)
+								}
+								return false
+							})
+							const hasResult = Boolean(toolReturn || nestedToolReturn)
+							const toolResult = String(toolReturn?.content ?? nestedToolReturn?.content ?? "")
+							console.debug(
+								"[LettaHandler] Tool result found:",
+								hasResult,
+								toolResult.slice(0, 80),
+								"nested:",
+								Boolean(nestedToolReturn),
+							)
 
 							// Send approval (with result) or denial (to clear stuck state)
 							// Correct format confirmed via API testing: approvals[].type must be "approval"
@@ -481,6 +496,8 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 							} else {
 								// Denied to clear stuck state — retry stream with original messages
 								console.debug("[LettaHandler] Denied stuck approval — retrying stream")
+								// Brief delay to ensure denial propagates before retry
+								await new Promise((resolve) => setTimeout(resolve, 300))
 								const retryStream = await this.client.agents.messages.stream(agentId, {
 									messages: messagesToSend as any,
 									// @ts-expect-error

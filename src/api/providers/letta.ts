@@ -98,6 +98,135 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		return hash.toString(36)
 	}
 
+	/**
+	 * Pre-stream drain: check for and clear any stale pending approvals.
+	 * This runs BEFORE every normal message send (not tool results) to ensure
+	 * the conversation is clean. Mirrors the proxy's drain_stale_approvals().
+	 *
+	 * Strategy:
+	 * 1. Fast path: check agent.pending_approval field (single API call)
+	 * 2. Fallback: REST scan of recent messages for approval_request_message
+	 */
+	private async clearPendingApprovals(agentId: string): Promise<boolean> {
+		let toolCallIds: string[] = []
+
+		// Fast path: agent state
+		try {
+			const agent = await this.client.agents.retrieve(agentId)
+			const pending = (agent as any).pending_approval
+			if (pending) {
+				const toolCalls = pending.tool_calls || (pending.tool_call ? [pending.tool_call] : [])
+				for (const tc of toolCalls) {
+					if (tc.tool_call_id) toolCallIds.push(tc.tool_call_id)
+				}
+			}
+		} catch (e) {
+			console.warn("[LettaHandler] Pre-drain: could not check agent state:", e)
+		}
+
+		// Fallback: REST scan if fast path found nothing
+		if (toolCallIds.length === 0) {
+			try {
+				const restBase = (this.options.lettaBaseUrl || "https://api.letta.com/v1").replace(/\/v1$/, "")
+				const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages?limit=10`, {
+					headers: { Authorization: `Bearer ${this.options.lettaApiKey || ""}` },
+				})
+				if (resp.ok) {
+					const msgs: any[] = await resp.json()
+					const approvalMsg = msgs.find((m: any) => m.message_type === "approval_request_message")
+					if (approvalMsg) {
+						const tcId = approvalMsg.tool_call?.tool_call_id ?? approvalMsg.tool_calls?.[0]?.tool_call_id
+						if (tcId) toolCallIds.push(tcId)
+					}
+				}
+			} catch (e) {
+				console.warn("[LettaHandler] Pre-drain: REST scan failed:", e)
+			}
+		}
+
+		if (toolCallIds.length === 0) return false
+
+		// Deny each stale approval
+		let cleared = false
+		for (const toolCallId of toolCallIds) {
+			console.debug(`[LettaHandler] Pre-drain: denying stale approval ${toolCallId}`)
+			try {
+				await (this.client.agents.messages as any).create(agentId, {
+					messages: [
+						{
+							type: "approval",
+							approvals: [
+								{
+									type: "approval",
+									approve: false,
+									tool_call_id: toolCallId,
+									reason: "Auto-denied: stale approval from interrupted session",
+								},
+							],
+						},
+					],
+				})
+				cleared = true
+				console.debug(`[LettaHandler] Pre-drain: denied ${toolCallId}`)
+			} catch (denyErr: any) {
+				const errStr = String(denyErr).toLowerCase()
+				if (errStr.includes("no tool call is currently awaiting approval")) {
+					cleared = true // Already resolved
+				} else {
+					console.warn("[LettaHandler] Pre-drain: deny failed:", denyErr)
+				}
+			}
+		}
+
+		if (cleared) {
+			// Wait for server to settle after denial
+			await new Promise((resolve) => setTimeout(resolve, 1500))
+		}
+		return cleared
+	}
+
+	/**
+	 * Build Letta tool_return messages from tool execution results.
+	 * This is the correct SDK format for delivering tool results back to an agent
+	 * that's waiting for client-side tool approval.
+	 * Mirrors the proxy's _build_tool_return_messages().
+	 */
+	private buildToolReturnMessages(toolResults: Array<{ toolCallId: string; content: string }>): any[] {
+		return [
+			{
+				type: "tool_return",
+				tool_returns: toolResults.map((tr) => ({
+					type: "tool",
+					status: "success",
+					tool_call_id: tr.toolCallId,
+					tool_return: tr.content,
+				})),
+			},
+		]
+	}
+
+	/**
+	 * Extract error details from a LettaError for classification.
+	 */
+	private extractErrorDetail(e: any): { statusCode: number | undefined; detail: string; isConflict: boolean } {
+		const statusCode = (e as any).status || (e as any).statusCode
+		const detail = String(
+			(e as any).body?.detail ??
+				(e as any).body ??
+				(e as any).error?.detail ??
+				(e as any).error?.message ??
+				e.message ??
+				"",
+		)
+		const lower = detail.toLowerCase()
+		const isConflict =
+			statusCode === 409 ||
+			lower.includes("pending_approval") ||
+			lower.includes("waiting for approval") ||
+			lower.includes("conflict")
+		return { statusCode, detail, isConflict }
+	}
+
 	private async getOrCreateConversation(
 		agentId: string,
 		metadata?: ApiHandlerCreateMessageMetadata,
@@ -343,6 +472,124 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				}
 			})
 
+		// ─── Separate tool results from regular messages ───
+		// Tool results arrive as { role: 'user', name: tool_use_id, content: result }
+		// (mapped from Anthropic's tool_result format in the message mapper above).
+		const toolResultItems: Array<{ toolCallId: string; content: string }> = []
+		const regularMessages: typeof messagesToSend = []
+
+		for (const msg of messagesToSend) {
+			if (msg.role === "user" && msg.name) {
+				toolResultItems.push({
+					toolCallId: msg.name,
+					content: String(msg.content || ""),
+				})
+			} else {
+				regularMessages.push(msg)
+			}
+		}
+
+		const hasToolResults = toolResultItems.length > 0
+
+		if (hasToolResults) {
+			// ─── Tool result flow ───
+			// Send results using the SDK's tool_return format (same as the proxy).
+			// Skip pre-drain — the pending approval IS the one we're responding to.
+			console.debug(`[LettaHandler] Sending ${toolResultItems.length} tool result(s) via tool_return format`)
+			const toolReturnMsgs = this.buildToolReturnMessages(toolResultItems)
+			// Include any remaining user text messages after tool returns
+			const userTextMsgs = regularMessages
+				.filter((m) => m.role === "user" && m.content)
+				.map((m) => ({ role: "user" as const, content: m.content }))
+			const outbound = [...toolReturnMsgs, ...userTextMsgs]
+
+			try {
+				const stream = await this.client.agents.messages.stream(agentId, {
+					messages: outbound as any,
+					// @ts-expect-error — conversation_id and client_tools are valid
+					conversation_id: conversationId,
+					client_tools: clientTools as any,
+				})
+				yield* this.processLettaStream(stream, clientTools)
+				return
+			} catch (toolReturnErr: any) {
+				// If tool_return fails, it might be because the server doesn't recognize
+				// the format (older version) or the approval was already resolved.
+				// Fall through to the legacy approval-based approach.
+				console.warn("[LettaHandler] tool_return stream failed, trying legacy approval flow:", toolReturnErr)
+
+				if (toolReturnErr instanceof LettaError) {
+					const { isConflict } = this.extractErrorDetail(toolReturnErr)
+					if (isConflict) {
+						// Try legacy approach: approve with result via approval message
+						try {
+							const restBase = (this.options.lettaBaseUrl || "https://api.letta.com/v1").replace(
+								/\/v1$/,
+								"",
+							)
+							const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages?limit=10`, {
+								headers: { Authorization: `Bearer ${this.options.lettaApiKey || ""}` },
+							})
+							let pendingToolCallId: string | undefined
+							if (resp.ok) {
+								const msgs: any[] = await resp.json()
+								const approval = msgs.find((m: any) => m.message_type === "approval_request_message")
+								pendingToolCallId =
+									approval?.tool_call?.tool_call_id ?? approval?.tool_calls?.[0]?.tool_call_id
+							}
+
+							if (pendingToolCallId) {
+								// Find matching result
+								const match = toolResultItems.find((tr) => tr.toolCallId === pendingToolCallId)
+								const approvalResp = await (this.client.agents.messages as any).create(agentId, {
+									messages: [
+										{
+											type: "approval",
+											approvals: [
+												{
+													type: "approval",
+													approve: Boolean(match),
+													tool_call_id: pendingToolCallId,
+													...(match ? { reason: match.content } : {}),
+												},
+											],
+										},
+									],
+								})
+
+								if (match) {
+									for (const msg of approvalResp?.messages ?? []) {
+										if (msg.message_type === "assistant_message" && msg.content) {
+											yield { type: "text", text: msg.content }
+										}
+									}
+									if (approvalResp?.usage) {
+										const u = approvalResp.usage
+										yield {
+											type: "usage",
+											inputTokens: (u.prompt_tokens ?? 0) - (u.cached_input_tokens ?? 0),
+											outputTokens: u.completion_tokens ?? 0,
+											cacheReadTokens: u.cached_input_tokens,
+										}
+									}
+									console.debug("[LettaHandler] Legacy approval with result succeeded")
+									return
+								}
+							}
+						} catch (legacyErr) {
+							console.warn("[LettaHandler] Legacy approval flow failed:", legacyErr)
+						}
+					}
+				}
+				// If we get here, we couldn't deliver the tool result at all
+				throw new Error("Letta: Failed to deliver tool result to agent. The tool call may have timed out.")
+			}
+		}
+
+		// ─── Normal message flow ───
+		// Pre-drain stale approvals before streaming to prevent 409s.
+		await this.clearPendingApprovals(agentId)
+
 		try {
 			const stream = await this.client.agents.messages.stream(agentId, {
 				messages: messagesToSend as any,
@@ -353,165 +600,25 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			yield* this.processLettaStream(stream, clientTools)
 		} catch (e: any) {
 			if (e instanceof LettaError) {
-				const statusCode = (e as any).status || (e as any).statusCode
-				// Error detail may be in body.detail (old format), error.detail (streaming APIError),
-				// or fall back to e.message. Check all locations.
-				const errDetail = String(
-					(e as any).body?.detail ??
-						(e as any).body ??
-						(e as any).error?.detail ??
-						(e as any).error?.message ??
-						e.message ??
-						"",
-				)
-				const isConflict =
-					statusCode === 409 ||
-					errDetail.toLowerCase().includes("pending_approval") ||
-					errDetail.toLowerCase().includes("waiting for approval") ||
-					errDetail.toLowerCase().includes("conflict")
+				const { statusCode, isConflict } = this.extractErrorDetail(e)
 
 				if (isConflict) {
-					// Agent is stuck on a pending tool-call approval from a previous run.
-					// Strategy: get tool_call_id of the pending approval → either
-					// (a) if messagesToSend has matching tool result → approve it and yield agent response
-					// (b) no matching result → deny to clear state → retry stream with original messages
-					//
-					// Two ways to find the tool_call_id:
-					// 1. Extract pending_request_id from the error body (old Letta format), look it up
-					// 2. REST scan of recent agent messages for an approval_request_message (new format)
+					// 409 after pre-drain — edge case. Try one more drain + retry.
+					console.debug("[LettaHandler] 409 after pre-drain, attempting recovery retry...")
 					try {
-						const pendingIdMatch = errDetail.match(/pending_request_id['": ]+([a-zA-Z0-9_-]+)/)
-						const pendingRequestId = pendingIdMatch?.[1]
-						console.debug("[LettaHandler] 409 conflict, pending_request_id:", pendingRequestId)
-
-						let toolCallId: string | undefined
-
-						if (pendingRequestId) {
-							// Old format: pending_request_id in error → look up in agent messages
-							const recentMsgs = await this.client.agents.messages.list(agentId, {
-								limit: 5,
-							} as any)
-							const pendingMsg = (recentMsgs as any[]).find(
-								(m: any) => m.id === pendingRequestId || m.otid === pendingRequestId,
-							)
-							toolCallId =
-								pendingMsg?.tool_call?.tool_call_id ?? pendingMsg?.tool_calls?.[0]?.tool_call_id
-						}
-
-						if (!toolCallId) {
-							// New format / fallback: scan recent messages via REST for approval_request_message.
-							// The SDK's agents.messages.list may return 0 results when no conversation_id is
-							// set, but the REST endpoint always returns the agent's full message history.
-							const restBase = (this.options.lettaBaseUrl || "https://api.letta.com/v1").replace(
-								/\/v1$/,
-								"",
-							)
-							try {
-								const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages?limit=10`, {
-									headers: { Authorization: `Bearer ${this.options.lettaApiKey || ""}` },
-								})
-								if (resp.ok) {
-									const recentMsgs: any[] = await resp.json()
-									const approvalMsg = recentMsgs.find(
-										(m: any) => m.message_type === "approval_request_message",
-									)
-									if (approvalMsg) {
-										toolCallId =
-											approvalMsg.tool_call?.tool_call_id ??
-											approvalMsg.tool_calls?.[0]?.tool_call_id
-										console.debug(
-											"[LettaHandler] Found pending approval via REST scan:",
-											toolCallId,
-										)
-									}
-								}
-							} catch (restErr) {
-								console.warn("[LettaHandler] REST message scan failed:", restErr)
-							}
-						}
-
-						console.debug("[LettaHandler] Pending tool_call_id:", toolCallId)
-
-						if (toolCallId) {
-							// Look for a matching tool result in the messages we were trying to send.
-							// Tool results are mapped as { role: 'user', name: toolCallId, content: result }
-							const toolReturn = (messagesToSend as any[]).find(
-								(m: any) => m.role === "user" && m.name === toolCallId,
-							)
-							// Also check for tool results in nested content arrays (edge case)
-							const nestedToolReturn = (messagesToSend as any[]).find((m: any) => {
-								if (m.role === "user" && Array.isArray(m.content)) {
-									return m.content.some(
-										(p: any) => p.type === "tool_result" && p.tool_use_id === toolCallId,
-									)
-								}
-								return false
-							})
-							const hasResult = Boolean(toolReturn || nestedToolReturn)
-							const toolResult = String(toolReturn?.content ?? nestedToolReturn?.content ?? "")
-							console.debug(
-								"[LettaHandler] Tool result found:",
-								hasResult,
-								toolResult.slice(0, 80),
-								"nested:",
-								Boolean(nestedToolReturn),
-							)
-
-							// Send approval (with result) or denial (to clear stuck state)
-							// Correct format confirmed via API testing: approvals[].type must be "approval"
-							const approvalResp = await (this.client.agents.messages as any).create(agentId, {
-								messages: [
-									{
-										type: "approval",
-										approvals: [
-											{
-												type: "approval",
-												approve: hasResult,
-												tool_call_id: toolCallId,
-												...(toolResult ? { reason: toolResult } : {}),
-											},
-										],
-									},
-								],
-							})
-
-							if (hasResult) {
-								// Approved with tool result — yield agent's response and finish
-								for (const msg of approvalResp?.messages ?? []) {
-									if (msg.message_type === "assistant_message" && msg.content) {
-										yield { type: "text", text: msg.content }
-									}
-								}
-								if (approvalResp?.usage) {
-									const u = approvalResp.usage
-									yield {
-										type: "usage",
-										inputTokens: (u.prompt_tokens ?? 0) - (u.cached_input_tokens ?? 0),
-										outputTokens: u.completion_tokens ?? 0,
-										cacheReadTokens: u.cached_input_tokens,
-									}
-								}
-								console.debug("[LettaHandler] Approved pending tool call with result — done")
-								return
-							} else {
-								// Denied to clear stuck state — retry stream with original messages
-								console.debug("[LettaHandler] Denied stuck approval — retrying stream")
-								// Brief delay to ensure denial propagates before retry
-								await new Promise((resolve) => setTimeout(resolve, 300))
-								const retryStream = await this.client.agents.messages.stream(agentId, {
-									messages: messagesToSend as any,
-									// @ts-expect-error
-									conversation_id: conversationId,
-									client_tools: clientTools as any,
-								})
-								yield* this.processLettaStream(retryStream, clientTools)
-								return
-							}
-						}
-					} catch (clearErr) {
-						console.warn("[LettaHandler] Could not auto-resolve 409:", clearErr)
+						await this.clearPendingApprovals(agentId)
+						await new Promise((resolve) => setTimeout(resolve, 1000))
+						const retryStream = await this.client.agents.messages.stream(agentId, {
+							messages: messagesToSend as any,
+							// @ts-expect-error
+							conversation_id: conversationId,
+							client_tools: clientTools as any,
+						})
+						yield* this.processLettaStream(retryStream, clientTools)
+						return
+					} catch (retryErr) {
+						console.warn("[LettaHandler] Recovery retry failed:", retryErr)
 					}
-					// Fallback: could not auto-clear — tell user to retry
 					throw new Error(
 						"Letta: The agent has a stuck tool-call approval that could not be auto-cleared. Please try sending your message again.",
 					)

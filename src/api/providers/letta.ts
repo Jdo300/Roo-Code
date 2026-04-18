@@ -308,11 +308,14 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			throw new Error("Letta Agent ID (Model ID) is required.")
 		}
 
-		// Start conversation lookup immediately — we'll await it later alongside other setup.
-		const conversationPromise = this.getOrCreateConversation(agentId, metadata).catch((e) => {
+		// Resolve conversation ID early — needed by both tool-result and normal flows.
+		// Already cached after first call, so fast on subsequent messages.
+		let conversationId: string | undefined = undefined
+		try {
+			conversationId = await this.getOrCreateConversation(agentId, metadata)
+		} catch (e) {
 			console.warn("Could not get or create Letta conversation, falling back to agent default memory", e)
-			return undefined
-		})
+		}
 
 		// Map Anthropic message format to Letta's expected format.
 		// We use role/content strings natively; tool calls and tool results are also mapped.
@@ -437,15 +440,13 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				})()
 			: Promise.resolve()
 
-		// Run all pre-stream setup in parallel to minimize first-message latency.
-		// Conversation lookup, block sync, model patch, and model info fetch are all independent.
-		const [resolvedConversationId] = await Promise.all([
-			conversationPromise,
+		// Run pre-stream setup in parallel to minimize first-message latency.
+		// Block sync, model patch, and model info fetch are all independent.
+		await Promise.all([
 			systemPrompt ? this.syncSystemPromptBlock(agentId, systemPrompt) : Promise.resolve(),
 			patchModel,
 			this.modelInfoFetchInProgress || Promise.resolve(),
 		])
-		const conversationId = resolvedConversationId
 
 		// Build client_tools array in the flat schema Letta expects.
 		// metadata.tools is OpenAI.Chat.ChatCompletionTool[] (a union that includes

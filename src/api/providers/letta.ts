@@ -647,6 +647,10 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		// loop with "you must use a tool".
 		let clientToolYielded = false
 		const textChunks: string[] = []
+		// Buffer text events — if we end up auto-injecting attempt_completion,
+		// we yield text ONLY via the completion result to avoid duplication.
+		// If a real client_tool is called, we flush buffered text immediately.
+		const bufferedTextEvents: Array<{ type: "text"; text: string }> = []
 
 		for await (const chunk of stream) {
 			const msgType = chunk.message_type
@@ -661,11 +665,12 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				continue
 			}
 
-			// Main response content
+			// Main response content — buffer instead of yielding immediately.
+			// We'll decide at stream end whether to yield as text or as attempt_completion.
 			if (msgType === "assistant_message") {
 				const content = chunk.content
 				if (content && typeof content === "string" && content.length > 0) {
-					yield { type: "text", text: content }
+					bufferedTextEvents.push({ type: "text", text: content })
 					textChunks.push(content)
 				}
 				continue
@@ -687,6 +692,13 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					if (msgType === "tool_call_message") {
 						const isClientTool = clientTools?.some((ct) => ct.name === tool.name)
 						if (!isClientTool) continue
+					}
+					// A real client_tool is being called — flush any buffered text first
+					if (!clientToolYielded && bufferedTextEvents.length > 0) {
+						for (const ev of bufferedTextEvents) {
+							yield ev
+						}
+						bufferedTextEvents.length = 0
 					}
 					const args = tool.arguments
 					yield {
@@ -713,13 +725,15 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			}
 		}
 
-		// ─── Auto-inject attempt_completion for text-only responses ───
-		// Letta agents naturally respond via send_message (an internal tool), which
-		// produces assistant_message text but no client_tool call. Roo Code requires
-		// a tool call in every response, causing a "you must use a tool" loop.
-		// Fix: when the stream produced text but no client_tool was called, synthesize
-		// an attempt_completion so Roo Code sees a proper task completion.
-		if (!clientToolYielded && textChunks.length > 0) {
+		// ─── Post-stream: decide how to deliver buffered text ───
+		if (clientToolYielded) {
+			// Agent used a real client_tool — flush any remaining buffered text as normal output
+			for (const ev of bufferedTextEvents) {
+				yield ev
+			}
+		} else if (textChunks.length > 0) {
+			// Agent only produced text (no client_tool) — deliver it via attempt_completion
+			// so Roo Code sees a proper tool call. Text appears ONCE in the completion box.
 			const hasAttemptCompletion = clientTools?.some((ct) => ct.name === "attempt_completion")
 			if (hasAttemptCompletion) {
 				const resultText = textChunks.join("\n").trim()
@@ -731,6 +745,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					id: "auto_completion_" + Date.now(),
 					name: "attempt_completion",
 					arguments: JSON.stringify({ result: resultText }),
+				}
+			} else {
+				// No attempt_completion available — fall back to regular text output
+				for (const ev of bufferedTextEvents) {
+					yield ev
 				}
 			}
 		}

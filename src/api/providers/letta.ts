@@ -631,6 +631,13 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 
 	/** Process a Letta streaming response, yielding ApiStream events. */
 	private async *processLettaStream(stream: AsyncIterable<any>, clientTools: any[] | undefined): ApiStream {
+		// Track whether any client_tool was forwarded to Roo Code during this stream.
+		// If the agent only used internal tools (send_message, conversation_search, etc.)
+		// and produced text, we auto-synthesize an attempt_completion so Roo Code doesn't
+		// loop with "you must use a tool".
+		let clientToolYielded = false
+		const textChunks: string[] = []
+
 		for await (const chunk of stream) {
 			const msgType = chunk.message_type
 			if (!msgType) continue
@@ -649,6 +656,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				const content = chunk.content
 				if (content && typeof content === "string" && content.length > 0) {
 					yield { type: "text", text: content }
+					textChunks.push(content)
 				}
 				continue
 			}
@@ -677,6 +685,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 						name: tool.name || "",
 						arguments: typeof args === "object" && args !== null ? JSON.stringify(args) : (args ?? ""),
 					}
+					clientToolYielded = true
 				}
 				continue
 			}
@@ -691,6 +700,28 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					cacheReadTokens: usage.cached_input_tokens,
 				}
 				continue
+			}
+		}
+
+		// ─── Auto-inject attempt_completion for text-only responses ───
+		// Letta agents naturally respond via send_message (an internal tool), which
+		// produces assistant_message text but no client_tool call. Roo Code requires
+		// a tool call in every response, causing a "you must use a tool" loop.
+		// Fix: when the stream produced text but no client_tool was called, synthesize
+		// an attempt_completion so Roo Code sees a proper task completion.
+		if (!clientToolYielded && textChunks.length > 0) {
+			const hasAttemptCompletion = clientTools?.some((ct) => ct.name === "attempt_completion")
+			if (hasAttemptCompletion) {
+				const resultText = textChunks.join("\n").trim()
+				console.debug(
+					`[LettaHandler] Auto-injecting attempt_completion (agent responded with text but no client_tool)`,
+				)
+				yield {
+					type: "tool_call",
+					id: "auto_completion_" + Date.now(),
+					name: "attempt_completion",
+					arguments: JSON.stringify({ result: resultText }),
+				}
 			}
 		}
 	}

@@ -642,11 +642,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			const msgType = chunk.message_type
 			if (!msgType) continue
 
-			// Surface agent thinking as text — useful for debugging
+			// Surface agent thinking/reasoning in the thinking panel
 			if (msgType === "reasoning_message") {
 				const reasoning = chunk.reasoning
 				if (reasoning && typeof reasoning === "string" && reasoning.length > 0) {
-					yield { type: "text", text: reasoning }
+					yield { type: "reasoning", text: reasoning }
 				}
 				continue
 			}

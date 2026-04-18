@@ -480,6 +480,16 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 
 		for (const msg of messagesToSend) {
 			if (msg.role === "user" && msg.name) {
+				// Skip tool results for auto-injected attempt_completion calls.
+				// These were synthesized by the provider (not real Letta tool calls),
+				// so Letta has no pending approval to match them against.
+				if (msg.name.startsWith("auto_completion_")) {
+					// Treat any user feedback text as a regular message instead
+					if (msg.content && String(msg.content).trim()) {
+						regularMessages.push({ role: "user", content: String(msg.content) })
+					}
+					continue
+				}
 				toolResultItems.push({
 					toolCallId: msg.name,
 					content: String(msg.content || ""),

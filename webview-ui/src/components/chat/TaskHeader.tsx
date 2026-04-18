@@ -12,6 +12,7 @@ import { getModelMaxOutputTokens } from "@roo/api"
 import { findLastIndex } from "@roo/array"
 
 import { formatLargeNumber } from "@src/utils/format"
+import { calculateTokenDistribution } from "@src/utils/model-utils"
 import { cn } from "@src/lib/utils"
 import { StandardTooltip, Button, Table, TableBody, TableRow, TableCell, CircularProgress } from "@src/components/ui"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
@@ -262,13 +263,17 @@ const TaskHeader = ({
 								sideOffset={8}>
 								<span className="flex items-center gap-1.5">
 									{(() => {
-										// Calculate percentage of available input space used
-										// Available input space = context window - reserved for output
-										const availableInputSpace = contextWindow - reservedForOutput
-										const percentage =
-											availableInputSpace > 0
-												? Math.round(((contextTokens || 0) / availableInputSpace) * 100)
-												: 0
+										// Use the same calculateTokenDistribution as the expanded bar
+										// so collapsed and expanded always show the same percentage.
+										const { currentPercent } = calculateTokenDistribution(
+											contextWindow,
+											contextTokens || 0,
+											maxTokens || undefined,
+										)
+										// Use Math.max(1,...) when tokens are non-zero to prevent
+										// rounding a tiny real usage value down to 0%.
+										const safeTokens = contextTokens || 0
+										const percentage = safeTokens > 0 ? Math.max(1, Math.round(currentPercent)) : 0
 										return (
 											<>
 												<CircularProgress percentage={percentage} />

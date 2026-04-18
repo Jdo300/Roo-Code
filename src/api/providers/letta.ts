@@ -24,7 +24,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		// Kick off model info fetch immediately so contextWindow/maxTokens are ready
 		// by the time Roo Code first calls getModel() for the context bar.
 		if (options.apiModelId && options.lettaApiKey) {
-			this.fetchAndCacheModelInfo().catch(() => {})
+			this.modelInfoFetchInProgress = this.fetchAndCacheModelInfo().catch(() => {})
 		}
 	}
 
@@ -308,12 +308,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			throw new Error("Letta Agent ID (Model ID) is required.")
 		}
 
-		let conversationId: string | undefined = undefined
-		try {
-			conversationId = await this.getOrCreateConversation(agentId, metadata)
-		} catch (e) {
+		// Start conversation lookup immediately — we'll await it later alongside other setup.
+		const conversationPromise = this.getOrCreateConversation(agentId, metadata).catch((e) => {
 			console.warn("Could not get or create Letta conversation, falling back to agent default memory", e)
-		}
+			return undefined
+		})
 
 		// Map Anthropic message format to Letta's expected format.
 		// We use role/content strings natively; tool calls and tool results are also mapped.
@@ -438,12 +437,15 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				})()
 			: Promise.resolve()
 
-		// Sync system prompt block (hash-guarded, usually instant after first call) +
-		// model patch — run in parallel so neither blocks the other before streaming starts.
-		await Promise.all([
+		// Run all pre-stream setup in parallel to minimize first-message latency.
+		// Conversation lookup, block sync, model patch, and model info fetch are all independent.
+		const [resolvedConversationId] = await Promise.all([
+			conversationPromise,
 			systemPrompt ? this.syncSystemPromptBlock(agentId, systemPrompt) : Promise.resolve(),
 			patchModel,
+			this.modelInfoFetchInProgress || Promise.resolve(),
 		])
+		const conversationId = resolvedConversationId
 
 		// Build client_tools array in the flat schema Letta expects.
 		// metadata.tools is OpenAI.Chat.ChatCompletionTool[] (a union that includes
@@ -646,11 +648,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		// and produced text, we auto-synthesize an attempt_completion so Roo Code doesn't
 		// loop with "you must use a tool".
 		let clientToolYielded = false
-		const textChunks: string[] = []
-		// Buffer text events — if we end up auto-injecting attempt_completion,
-		// we yield text ONLY via the completion result to avoid duplication.
-		// If a real client_tool is called, we flush buffered text immediately.
-		const bufferedTextEvents: Array<{ type: "text"; text: string }> = []
+		let hasText = false
 
 		for await (const chunk of stream) {
 			const msgType = chunk.message_type
@@ -665,13 +663,12 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				continue
 			}
 
-			// Main response content — buffer instead of yielding immediately.
-			// We'll decide at stream end whether to yield as text or as attempt_completion.
+			// Main response content — yield immediately for real-time streaming
 			if (msgType === "assistant_message") {
 				const content = chunk.content
 				if (content && typeof content === "string" && content.length > 0) {
-					bufferedTextEvents.push({ type: "text", text: content })
-					textChunks.push(content)
+					yield { type: "text", text: content }
+					hasText = true
 				}
 				continue
 			}
@@ -692,13 +689,6 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					if (msgType === "tool_call_message") {
 						const isClientTool = clientTools?.some((ct) => ct.name === tool.name)
 						if (!isClientTool) continue
-					}
-					// A real client_tool is being called — flush any buffered text first
-					if (!clientToolYielded && bufferedTextEvents.length > 0) {
-						for (const ev of bufferedTextEvents) {
-							yield ev
-						}
-						bufferedTextEvents.length = 0
 					}
 					const args = tool.arguments
 					yield {
@@ -725,18 +715,14 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			}
 		}
 
-		// ─── Post-stream: decide how to deliver buffered text ───
-		if (clientToolYielded) {
-			// Agent used a real client_tool — flush any remaining buffered text as normal output
-			for (const ev of bufferedTextEvents) {
-				yield ev
-			}
-		} else if (textChunks.length > 0) {
-			// Agent only produced text (no client_tool) — deliver it via attempt_completion
-			// so Roo Code sees a proper tool call. Text appears ONCE in the completion box.
+		// ─── Auto-inject attempt_completion for text-only responses ───
+		// Letta agents respond via send_message (internal tool) which produces text
+		// but no client_tool call. Roo Code requires a tool call per turn.
+		// Fix: synthesize a lightweight attempt_completion so Roo Code closes the turn.
+		// The text was already streamed above — the completion result is kept minimal.
+		if (!clientToolYielded && hasText) {
 			const hasAttemptCompletion = clientTools?.some((ct) => ct.name === "attempt_completion")
 			if (hasAttemptCompletion) {
-				const resultText = textChunks.join("\n").trim()
 				console.debug(
 					`[LettaHandler] Auto-injecting attempt_completion (agent responded with text but no client_tool)`,
 				)
@@ -744,12 +730,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					type: "tool_call",
 					id: "auto_completion_" + Date.now(),
 					name: "attempt_completion",
-					arguments: JSON.stringify({ result: resultText }),
-				}
-			} else {
-				// No attempt_completion available — fall back to regular text output
-				for (const ev of bufferedTextEvents) {
-					yield ev
+					arguments: JSON.stringify({ result: "Task completed." }),
 				}
 			}
 		}
@@ -782,8 +763,14 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				description: "Letta Agent (model configured per-agent in Letta Cloud)",
 			},
 		}
-		// Async fetch to populate cache for subsequent calls
-		this.fetchAndCacheModelInfo().catch(() => {})
+		// Async fetch to populate cache for subsequent calls (dedup via in-flight guard)
+		if (!this.modelInfoFetchInProgress) {
+			this.modelInfoFetchInProgress = this.fetchAndCacheModelInfo()
+				.catch(() => {})
+				.finally(() => {
+					this.modelInfoFetchInProgress = undefined
+				})
+		}
 		return defaults
 	}
 

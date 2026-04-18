@@ -42,7 +42,7 @@ export const getLettaModels = (req: UseLettaModelsRequest) =>
 				cleanup()
 
 				if (message.lettaModels) {
-					resolve(message.lettaModels)
+					resolve(message.lettaModels as LettaModel[])
 				} else {
 					reject(new Error("No Letta models in response"))
 				}
@@ -67,14 +67,11 @@ export function useLettaModels(req: UseLettaModelsRequest) {
 	reqRef.current = req
 
 	const fetchModels = useCallback(async () => {
-		const r = reqRef.current
-		if (!r.lettaApiKey) return
-
 		setModelsLoading(true)
 		setModelsError(null)
 
 		try {
-			const result = await getLettaModels(r)
+			const result = await getLettaModels(reqRef.current)
 			if (result && result.length > 0) {
 				setModels(result)
 			} else {
@@ -88,10 +85,9 @@ export function useLettaModels(req: UseLettaModelsRequest) {
 	}, []) // reqRef is stable
 
 	useEffect(() => {
-		// Only fetch automatically if we actually have a key
-		if (req.lettaApiKey && req.lettaApiKey !== "not-provided") {
-			fetchModels()
-		}
+		// Fetch models on mount and when credentials change.
+		// No API key guard — self-hosted Letta servers may not require auth.
+		fetchModels()
 	}, [req.lettaBaseUrl, req.lettaApiKey, fetchModels])
 
 	return {

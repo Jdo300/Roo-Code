@@ -186,6 +186,10 @@ function getModelIdForProvider(apiConfiguration: ProviderSettings, provider: Pro
 		return apiConfiguration.vsCodeLmModelSelector?.id
 	}
 
+	if (provider === "letta") {
+		return apiConfiguration.lettaModelId
+	}
+
 	if (isCustomProvider(provider) || isFauxProvider(provider)) {
 		return apiConfiguration.apiModelId
 	}

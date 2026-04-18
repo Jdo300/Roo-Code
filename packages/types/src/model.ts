@@ -113,9 +113,9 @@ export const modelInfoSchema = z.object({
 	// Exclude specific native tools from being available (only applies to native protocol)
 	// These tools will be removed from the set of tools available to the model
 	excludedTools: z.array(z.string()).optional(),
+	// Flag to indicate if the model supports computer use (e.g. Claude 3.5 Sonnet)
+	supportsComputerUse: z.boolean().optional(),
 	// Include specific native tools (only applies to native protocol)
-	// These tools will be added if they belong to an allowed group in the current mode
-	// Cannot force-add tools from groups the mode doesn't allow
 	includedTools: z.array(z.string()).optional(),
 	/**
 	 * Service tiers with pricing information.

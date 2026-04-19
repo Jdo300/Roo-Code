@@ -107,7 +107,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 	 * 1. Fast path: check agent.pending_approval field (single API call)
 	 * 2. Fallback: REST scan of recent messages for approval_request_message
 	 */
-	private async clearPendingApprovals(agentId: string): Promise<boolean> {
+	private async clearPendingApprovals(agentId: string, conversationId?: string): Promise<boolean> {
 		let toolCallIds: string[] = []
 
 		// Fast path: agent state
@@ -128,7 +128,8 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		if (toolCallIds.length === 0) {
 			try {
 				const restBase = (this.options.lettaBaseUrl || "https://api.letta.com/v1").replace(/\/v1$/, "")
-				const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages?limit=10`, {
+				const convFilter = conversationId ? `&conversation_id=${conversationId}` : ""
+				const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages?limit=50${convFilter}`, {
 					headers: { Authorization: `Bearer ${this.options.lettaApiKey || ""}` },
 				})
 				if (resp.ok) {
@@ -503,6 +504,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		}
 
 		const hasToolResults = toolResultItems.length > 0
+		let hasToolResultsFallback = false
 
 		if (hasToolResults) {
 			// ─── Tool result flow ───
@@ -540,9 +542,13 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 								/\/v1$/,
 								"",
 							)
-							const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages?limit=10`, {
-								headers: { Authorization: `Bearer ${this.options.lettaApiKey || ""}` },
-							})
+							const convFilter2 = conversationId ? `&conversation_id=${conversationId}` : ""
+							const resp = await fetch(
+								`${restBase}/v1/agents/${agentId}/messages?limit=50${convFilter2}`,
+								{
+									headers: { Authorization: `Bearer ${this.options.lettaApiKey || ""}` },
+								},
+							)
 							let pendingToolCallId: string | undefined
 							if (resp.ok) {
 								const msgs: any[] = await resp.json()
@@ -594,18 +600,37 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 						}
 					}
 				}
-				// If we get here, we couldn't deliver the tool result at all
-				throw new Error("Letta: Failed to deliver tool result to agent. The tool call may have timed out.")
+				// If we get here, the legacy path also failed.
+				// This can happen on delegation resume: new_task tool_result was already
+				// delivered before delegation, but resumeAfterDelegation re-sends the same
+				// last user message (which includes env details + the old tool_result).
+				// If regular messages exist (e.g. environment details), fall through to
+				// normal message flow so the agent can continue cleanly.
+				const fallbackMsgs = regularMessages.filter((m) => m.role === "user" && m.content)
+				if (fallbackMsgs.length > 0) {
+					console.debug(
+						"[LettaHandler] tool_return failed; falling back to regular message flow (delegation resume?)",
+					)
+					hasToolResultsFallback = true
+				} else {
+					throw new Error("Letta: Failed to deliver tool result to agent. The tool call may have timed out.")
+				}
 			}
 		}
 
 		// ─── Normal message flow ───
 		// Pre-drain stale approvals before streaming to prevent 409s.
-		await this.clearPendingApprovals(agentId)
+		await this.clearPendingApprovals(agentId, conversationId)
+
+		// On delegation resume fallback, use only non-tool-result messages
+		// (e.g. environment details) to avoid re-delivering an already-resolved tool_return.
+		const effectiveMessages = hasToolResultsFallback
+			? regularMessages.filter((m) => m.role === "user" && m.content)
+			: messagesToSend
 
 		try {
 			const stream = await this.client.agents.messages.stream(agentId, {
-				messages: messagesToSend as any,
+				messages: effectiveMessages as any,
 				// @ts-expect-error — conversation_id and client_tools are valid but some types may be incomplete
 				conversation_id: conversationId,
 				client_tools: clientTools as any,
@@ -619,10 +644,10 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					// 409 after pre-drain — edge case. Try one more drain + retry.
 					console.debug("[LettaHandler] 409 after pre-drain, attempting recovery retry...")
 					try {
-						await this.clearPendingApprovals(agentId)
+						await this.clearPendingApprovals(agentId, conversationId)
 						await new Promise((resolve) => setTimeout(resolve, 1000))
 						const retryStream = await this.client.agents.messages.stream(agentId, {
-							messages: messagesToSend as any,
+							messages: effectiveMessages as any,
 							// @ts-expect-error
 							conversation_id: conversationId,
 							client_tools: clientTools as any,

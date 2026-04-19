@@ -134,7 +134,9 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				})
 				if (resp.ok) {
 					const msgs: any[] = await resp.json()
-					const approvalMsg = msgs.find((m: any) => m.message_type === "approval_request_message")
+					// Use findLast to find the NEWEST approval_request_message.
+					// Messages are returned oldest-first; .find() would return a stale resolved one.
+					const approvalMsg = msgs.findLast((m: any) => m.message_type === "approval_request_message")
 					if (approvalMsg) {
 						const tcId = approvalMsg.tool_call?.tool_call_id ?? approvalMsg.tool_calls?.[0]?.tool_call_id
 						if (tcId) toolCallIds.push(tcId)

@@ -129,9 +129,14 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			try {
 				const restBase = (this.options.lettaBaseUrl || "https://api.letta.com/v1").replace(/\/v1$/, "")
 				const convFilter = conversationId ? `&conversation_id=${conversationId}` : ""
-				const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages?limit=50${convFilter}`, {
+				// Use limit=200 — each Roo Code exchange is 4-5 messages; limit=50 only covers ~10 turns.
+				// A delegation crash after many turns would miss the approval_request_message.
+				const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages?limit=200${convFilter}`, {
 					headers: { Authorization: `Bearer ${this.options.lettaApiKey || ""}` },
 				})
+				console.warn(
+					`[LettaHandler] Pre-drain: REST scan ${resp.ok ? "ok" : "FAILED " + resp.status} convFilter=${convFilter || "none"}`,
+				)
 				if (resp.ok) {
 					const msgs: any[] = await resp.json()
 					// Use reverse().find() to get the NEWEST approval_request_message.
@@ -139,6 +144,9 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 					const approvalMsg = [...msgs]
 						.reverse()
 						.find((m: any) => m.message_type === "approval_request_message")
+					console.warn(
+						`[LettaHandler] Pre-drain: scanned ${msgs.length} msgs, found approval: ${approvalMsg ? approvalMsg.tool_call?.name : "none"}`,
+					)
 					if (approvalMsg) {
 						const tcId = approvalMsg.tool_call?.tool_call_id ?? approvalMsg.tool_calls?.[0]?.tool_call_id
 						const toolName = approvalMsg.tool_call?.name ?? approvalMsg.tool_calls?.[0]?.name

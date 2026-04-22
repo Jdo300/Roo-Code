@@ -108,7 +108,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 	 * 2. Fallback: REST scan of recent messages for approval_request_message
 	 */
 	private async clearPendingApprovals(agentId: string, conversationId?: string): Promise<boolean> {
-		let toolCallIds: string[] = []
+		let pendingItems: Array<{ toolCallId: string; toolName?: string }> = []
 
 		// Fast path: agent state
 		try {
@@ -117,7 +117,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			if (pending) {
 				const toolCalls = pending.tool_calls || (pending.tool_call ? [pending.tool_call] : [])
 				for (const tc of toolCalls) {
-					if (tc.tool_call_id) toolCallIds.push(tc.tool_call_id)
+					if (tc.tool_call_id) pendingItems.push({ toolCallId: tc.tool_call_id, toolName: tc.name })
 				}
 			}
 		} catch (e) {
@@ -125,7 +125,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		}
 
 		// Fallback: REST scan if fast path found nothing
-		if (toolCallIds.length === 0) {
+		if (pendingItems.length === 0) {
 			try {
 				const restBase = (this.options.lettaBaseUrl || "https://api.letta.com/v1").replace(/\/v1$/, "")
 				const convFilter = conversationId ? `&conversation_id=${conversationId}` : ""
@@ -134,14 +134,15 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				})
 				if (resp.ok) {
 					const msgs: any[] = await resp.json()
-					// Use findLast to find the NEWEST approval_request_message.
-					// Messages are returned oldest-first; .find() would return a stale resolved one.
+					// Use reverse().find() to get the NEWEST approval_request_message.
+					// Messages are oldest-first; plain .find() would return a stale resolved one.
 					const approvalMsg = [...msgs]
 						.reverse()
 						.find((m: any) => m.message_type === "approval_request_message")
 					if (approvalMsg) {
 						const tcId = approvalMsg.tool_call?.tool_call_id ?? approvalMsg.tool_calls?.[0]?.tool_call_id
-						if (tcId) toolCallIds.push(tcId)
+						const toolName = approvalMsg.tool_call?.name ?? approvalMsg.tool_calls?.[0]?.name
+						if (tcId) pendingItems.push({ toolCallId: tcId, toolName })
 					}
 				}
 			} catch (e) {
@@ -149,12 +150,20 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			}
 		}
 
-		if (toolCallIds.length === 0) return false
+		if (pendingItems.length === 0) return false
 
-		// Deny each stale approval
+		// Resolve each stale approval.
+		// For delegation tools (new_task), approve with an interruption message so the Letta
+		// agent can handle the result gracefully and return control without immediately retrying.
+		// Denying a new_task causes the agent to retry the delegation, creating an infinite loop.
+		// For all other tools, deny (safe to dismiss without a result).
 		let cleared = false
-		for (const toolCallId of toolCallIds) {
-			console.debug(`[LettaHandler] Pre-drain: denying stale approval ${toolCallId}`)
+		for (const { toolCallId, toolName } of pendingItems) {
+			const isDelegation = toolName === "new_task"
+			const action = isDelegation ? "approving with interruption message" : "denying"
+			console.debug(
+				`[LettaHandler] Pre-drain: ${action} stale approval ${toolCallId} (tool: ${toolName ?? "unknown"})`,
+			)
 			try {
 				await (this.client.agents.messages as any).create(agentId, {
 					messages: [
@@ -163,29 +172,32 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 							approvals: [
 								{
 									type: "approval",
-									approve: false,
+									approve: isDelegation ? true : false,
 									tool_call_id: toolCallId,
-									reason: "Auto-denied: stale approval from interrupted session",
+									reason: isDelegation
+										? "The previous delegation was interrupted by a session restart. " +
+											"Please report this to the user and return control without re-delegating."
+										: "Auto-denied: stale approval from interrupted session",
 								},
 							],
 						},
 					],
 				})
 				cleared = true
-				console.debug(`[LettaHandler] Pre-drain: denied ${toolCallId}`)
-			} catch (denyErr: any) {
-				const errStr = String(denyErr).toLowerCase()
+				console.debug(`[LettaHandler] Pre-drain: resolved ${toolCallId}`)
+			} catch (resolveErr: any) {
+				const errStr = String(resolveErr).toLowerCase()
 				if (errStr.includes("no tool call is currently awaiting approval")) {
 					cleared = true // Already resolved
 				} else {
-					console.warn("[LettaHandler] Pre-drain: deny failed:", denyErr)
+					console.warn("[LettaHandler] Pre-drain: resolve failed:", resolveErr)
 				}
 			}
 		}
 
 		if (cleared) {
-			// Wait for server to settle after denial
-			await new Promise((resolve) => setTimeout(resolve, 1500))
+			// Wait for server to settle after approval/denial
+			await new Promise((resolve) => setTimeout(resolve, 2000))
 		}
 		return cleared
 	}
@@ -556,7 +568,11 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 							let pendingToolCallId: string | undefined
 							if (resp.ok) {
 								const msgs: any[] = await resp.json()
-								const approval = msgs.find((m: any) => m.message_type === "approval_request_message")
+								// Use reverse().find() to get the NEWEST approval_request_message.
+								// Messages are oldest-first; plain .find() returns a stale resolved one.
+								const approval = [...msgs]
+									.reverse()
+									.find((m: any) => m.message_type === "approval_request_message")
 								pendingToolCallId =
 									approval?.tool_call?.tool_call_id ?? approval?.tool_calls?.[0]?.tool_call_id
 							}

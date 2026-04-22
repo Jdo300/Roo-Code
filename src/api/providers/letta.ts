@@ -101,16 +101,12 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 	/**
 	 * Pre-stream drain: check for and clear any stale pending approvals.
 	 * This runs BEFORE every normal message send (not tool results) to ensure
-	 * the conversation is clean. Mirrors the proxy's drain_stale_approvals().
-	 *
-	 * Strategy:
-	 * 1. Fast path: check agent.pending_approval field (single API call)
-	 * 2. Fallback: REST scan of recent messages for approval_request_message
+	 * the conversation is clean.
 	 */
 	private async clearPendingApprovals(agentId: string, conversationId?: string): Promise<boolean> {
-		let pendingItems: Array<{ toolCallId: string; toolName?: string }> = []
+		const pendingItems: Array<{ toolCallId: string; toolName?: string }> = []
 
-		// Fast path: agent state
+		// Fast path: agent.pending_approval (populated in newer Letta versions)
 		try {
 			const agent = await this.client.agents.retrieve(agentId)
 			const pending = (agent as any).pending_approval
@@ -124,40 +120,33 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			console.warn("[LettaHandler] Pre-drain: could not check agent state:", e)
 		}
 
-		// Fallback: REST scan if fast path found nothing.
-		// Scan twice: once with conversation_id (normal case) and once without (catches approvals
-		// that landed in the global stream, e.g. from direct API testing or earlier sessions).
-		for (const useConvFilter of [true, false]) {
-			if (pendingItems.length > 0) break
-			try {
-				const restBase = (this.options.lettaBaseUrl || "https://api.letta.com/v1").replace(/\/v1$/, "")
-				const convFilter = useConvFilter && conversationId ? `&conversation_id=${conversationId}` : ""
-				// Use limit=200 — each Roo Code exchange is 4-5 messages; limit=50 only covers ~10 turns.
-				// A delegation crash after many turns would miss the approval_request_message.
-				const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages?limit=200${convFilter}`, {
-					headers: { Authorization: `Bearer ${this.options.lettaApiKey || ""}` },
-				})
-				console.warn(
-					`[LettaHandler] Pre-drain: REST scan ${resp.ok ? "ok" : "FAILED " + resp.status} convFilter=${convFilter || "none"}`,
-				)
-				if (resp.ok) {
-					const msgs: any[] = await resp.json()
-					// Use reverse().find() to get the NEWEST approval_request_message.
-					// Messages are oldest-first; plain .find() would return a stale resolved one.
-					const approvalMsg = [...msgs]
-						.reverse()
-						.find((m: any) => m.message_type === "approval_request_message")
-					console.warn(
-						`[LettaHandler] Pre-drain: scanned ${msgs.length} msgs, found approval: ${approvalMsg ? approvalMsg.tool_call?.name : "none"}`,
-					)
-					if (approvalMsg) {
-						const tcId = approvalMsg.tool_call?.tool_call_id ?? approvalMsg.tool_calls?.[0]?.tool_call_id
-						const toolName = approvalMsg.tool_call?.name ?? approvalMsg.tool_calls?.[0]?.name
-						if (tcId) pendingItems.push({ toolCallId: tcId, toolName })
+		// Fallback: scan recent messages for unresolved approval_request_message.
+		// Required for Letta servers where pending_approval is not populated.
+		// Scan with conversation_id first, then without (catches global-stream approvals).
+		if (pendingItems.length === 0) {
+			const restBase = (this.options.lettaBaseUrl || "https://api.letta.com/v1").replace(/\/v1$/, "")
+			for (const convFilter of [conversationId ? `&conversation_id=${conversationId}` : null, ""]) {
+				if (convFilter === null) continue
+				if (pendingItems.length > 0) break
+				try {
+					const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages/?limit=200${convFilter}`, {
+						headers: { Authorization: `Bearer ${this.options.lettaApiKey || ""}` },
+					})
+					if (resp.ok) {
+						const msgs: any[] = await resp.json()
+						const approvalMsg = [...msgs]
+							.reverse()
+							.find((m: any) => m.message_type === "approval_request_message")
+						if (approvalMsg) {
+							const tcId =
+								approvalMsg.tool_call?.tool_call_id ?? approvalMsg.tool_calls?.[0]?.tool_call_id
+							const toolName = approvalMsg.tool_call?.name ?? approvalMsg.tool_calls?.[0]?.name
+							if (tcId) pendingItems.push({ toolCallId: tcId, toolName })
+						}
 					}
+				} catch (e) {
+					console.warn("[LettaHandler] Pre-drain: message scan failed:", e)
 				}
-			} catch (e) {
-				console.warn("[LettaHandler] Pre-drain: REST scan failed:", e)
 			}
 		}
 
@@ -553,7 +542,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		}
 
 		const hasToolResults = toolResultItems.length > 0
-		let hasToolResultsFallback = false
+		let toolReturnFailed = false
 
 		if (hasToolResults) {
 			// ─── Tool result flow ───
@@ -561,7 +550,6 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			// Skip pre-drain — the pending approval IS the one we're responding to.
 			console.debug(`[LettaHandler] Sending ${toolResultItems.length} tool result(s) via tool_return format`)
 			const toolReturnMsgs = this.buildToolReturnMessages(toolResultItems)
-			// Include any remaining user text messages after tool returns
 			const userTextMsgs = regularMessages
 				.filter((m) => m.role === "user" && m.content)
 				.map((m) => ({ role: "user" as const, content: m.content }))
@@ -577,97 +565,12 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 				yield* this.processLettaStream(stream, clientTools)
 				return
 			} catch (toolReturnErr: any) {
-				// If tool_return fails, it might be because the server doesn't recognize
-				// the format (older version) or the approval was already resolved.
-				// Fall through to the legacy approval-based approach.
-				console.warn("[LettaHandler] tool_return stream failed, trying legacy approval flow:", toolReturnErr)
-
-				if (toolReturnErr instanceof LettaError) {
-					const { isConflict } = this.extractErrorDetail(toolReturnErr)
-					if (isConflict) {
-						// Try legacy approach: approve with result via approval message
-						try {
-							const restBase = (this.options.lettaBaseUrl || "https://api.letta.com/v1").replace(
-								/\/v1$/,
-								"",
-							)
-							const convFilter2 = conversationId ? `&conversation_id=${conversationId}` : ""
-							const resp = await fetch(
-								`${restBase}/v1/agents/${agentId}/messages?limit=50${convFilter2}`,
-								{
-									headers: { Authorization: `Bearer ${this.options.lettaApiKey || ""}` },
-								},
-							)
-							let pendingToolCallId: string | undefined
-							if (resp.ok) {
-								const msgs: any[] = await resp.json()
-								// Use reverse().find() to get the NEWEST approval_request_message.
-								// Messages are oldest-first; plain .find() returns a stale resolved one.
-								const approval = [...msgs]
-									.reverse()
-									.find((m: any) => m.message_type === "approval_request_message")
-								pendingToolCallId =
-									approval?.tool_call?.tool_call_id ?? approval?.tool_calls?.[0]?.tool_call_id
-							}
-
-							if (pendingToolCallId) {
-								// Find matching result
-								const match = toolResultItems.find((tr) => tr.toolCallId === pendingToolCallId)
-								const approvalResp = await (this.client.agents.messages as any).create(agentId, {
-									messages: [
-										{
-											type: "approval",
-											approvals: [
-												{
-													type: "approval",
-													approve: Boolean(match),
-													tool_call_id: pendingToolCallId,
-													...(match ? { reason: match.content } : {}),
-												},
-											],
-										},
-									],
-								})
-
-								if (match) {
-									for (const msg of approvalResp?.messages ?? []) {
-										if (msg.message_type === "assistant_message" && msg.content) {
-											yield { type: "text", text: msg.content }
-										}
-									}
-									if (approvalResp?.usage) {
-										const u = approvalResp.usage
-										yield {
-											type: "usage",
-											inputTokens: (u.prompt_tokens ?? 0) - (u.cached_input_tokens ?? 0),
-											outputTokens: u.completion_tokens ?? 0,
-											cacheReadTokens: u.cached_input_tokens,
-										}
-									}
-									console.debug("[LettaHandler] Legacy approval with result succeeded")
-									return
-								}
-							}
-						} catch (legacyErr) {
-							console.warn("[LettaHandler] Legacy approval flow failed:", legacyErr)
-						}
-					}
-				}
-				// If we get here, the legacy path also failed.
-				// This can happen on delegation resume: new_task tool_result was already
-				// delivered before delegation, but resumeAfterDelegation re-sends the same
-				// last user message (which includes env details + the old tool_result).
-				// If regular messages exist (e.g. environment details), fall through to
-				// normal message flow so the agent can continue cleanly.
-				const fallbackMsgs = regularMessages.filter((m) => m.role === "user" && m.content)
-				if (fallbackMsgs.length > 0) {
-					console.debug(
-						"[LettaHandler] tool_return failed; falling back to regular message flow (delegation resume?)",
-					)
-					hasToolResultsFallback = true
-				} else {
-					throw new Error("Letta: Failed to deliver tool result to agent. The tool call may have timed out.")
-				}
+				// tool_return failed (stale tool call ID, already resolved, etc.).
+				// Embed the result as a plain user message so the agent has context and can continue.
+				console.warn("[LettaHandler] tool_return failed, embedding result as user message:", toolReturnErr)
+				const resultSummary = toolResultItems.map((tr) => `Tool result: ${tr.content}`).join("\n")
+				regularMessages.push({ role: "user", content: resultSummary })
+				toolReturnFailed = true
 			}
 		}
 
@@ -675,16 +578,16 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		// Pre-drain stale approvals before streaming to prevent 409s.
 		await this.clearPendingApprovals(agentId, conversationId)
 
-		// On delegation resume fallback, use only non-tool-result messages
-		// (e.g. environment details) to avoid re-delivering an already-resolved tool_return.
-		const effectiveMessages = hasToolResultsFallback
+		// If tool_return failed, use regularMessages (which now includes the embedded result)
+		// instead of messagesToSend (which still has the raw tool_result format).
+		const outboundMessages = toolReturnFailed
 			? regularMessages.filter((m) => m.role === "user" && m.content)
 			: messagesToSend
 
 		try {
 			const stream = await this.client.agents.messages.stream(agentId, {
-				messages: effectiveMessages as any,
-				// @ts-expect-error — conversation_id and client_tools are valid but some types may be incomplete
+				messages: outboundMessages as any,
+				// @ts-expect-error — conversation_id and client_tools are valid
 				conversation_id: conversationId,
 				client_tools: clientTools as any,
 			})
@@ -700,7 +603,7 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 						await this.clearPendingApprovals(agentId, conversationId)
 						await new Promise((resolve) => setTimeout(resolve, 1000))
 						const retryStream = await this.client.agents.messages.stream(agentId, {
-							messages: effectiveMessages as any,
+							messages: outboundMessages as any,
 							// @ts-expect-error
 							conversation_id: conversationId,
 							client_tools: clientTools as any,

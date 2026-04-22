@@ -2425,8 +2425,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this.apiConversationHistory = await this.getSavedApiConversationHistory()
 		}
 
-		// Add environment details to the existing last user message (which contains the tool_result)
-		// This avoids creating a new user message which would cause consecutive user messages
+		// Add environment details to the existing last user message only when that
+		// message is plain user text. If the last user message contains only tool_result
+		// blocks (common after new_task delegation resumes), appending text would turn the
+		// resume payload into a mixed tool_return + user text bundle. The Letta provider
+		// then sends both together, which can race with the pending approval and leave the
+		// agent stuck waiting for approval on the original tool call.
 		const environmentDetails = await getEnvironmentDetails(this, true)
 		let lastUserMsgIndex = -1
 		for (let i = this.apiConversationHistory.length - 1; i >= 0; i--) {
@@ -2438,20 +2442,38 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (lastUserMsgIndex >= 0) {
 			const lastUserMsg = this.apiConversationHistory[lastUserMsgIndex]
 			if (Array.isArray(lastUserMsg.content)) {
-				// Remove any existing environment_details blocks before adding fresh ones
-				const contentWithoutEnvDetails = lastUserMsg.content.filter(
-					(block: Anthropic.Messages.ContentBlockParam) => {
-						if (block.type === "text" && typeof block.text === "string") {
-							const isEnvironmentDetailsBlock =
-								block.text.trim().startsWith("<environment_details>") &&
-								block.text.trim().endsWith("</environment_details>")
-							return !isEnvironmentDetailsBlock
-						}
-						return true
-					},
+				const hasToolResult = lastUserMsg.content.some(
+					(block: Anthropic.Messages.ContentBlockParam) => block.type === "tool_result",
 				)
-				// Add fresh environment details
-				lastUserMsg.content = [...contentWithoutEnvDetails, { type: "text" as const, text: environmentDetails }]
+				const hasNonEnvText = lastUserMsg.content.some(
+					(block: Anthropic.Messages.ContentBlockParam) =>
+						block.type === "text" &&
+						typeof block.text === "string" &&
+						!(
+							block.text.trim().startsWith("<environment_details>") &&
+							block.text.trim().endsWith("</environment_details>")
+						),
+				)
+
+				if (!hasToolResult || hasNonEnvText) {
+					// Remove any existing environment_details blocks before adding fresh ones
+					const contentWithoutEnvDetails = lastUserMsg.content.filter(
+						(block: Anthropic.Messages.ContentBlockParam) => {
+							if (block.type === "text" && typeof block.text === "string") {
+								const isEnvironmentDetailsBlock =
+									block.text.trim().startsWith("<environment_details>") &&
+									block.text.trim().endsWith("</environment_details>")
+								return !isEnvironmentDetailsBlock
+							}
+							return true
+						},
+					)
+					// Add fresh environment details
+					lastUserMsg.content = [
+						...contentWithoutEnvDetails,
+						{ type: "text" as const, text: environmentDetails },
+					]
+				}
 			}
 		}
 

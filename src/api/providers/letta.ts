@@ -124,11 +124,14 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 			console.warn("[LettaHandler] Pre-drain: could not check agent state:", e)
 		}
 
-		// Fallback: REST scan if fast path found nothing
-		if (pendingItems.length === 0) {
+		// Fallback: REST scan if fast path found nothing.
+		// Scan twice: once with conversation_id (normal case) and once without (catches approvals
+		// that landed in the global stream, e.g. from direct API testing or earlier sessions).
+		for (const useConvFilter of [true, false]) {
+			if (pendingItems.length > 0) break
 			try {
 				const restBase = (this.options.lettaBaseUrl || "https://api.letta.com/v1").replace(/\/v1$/, "")
-				const convFilter = conversationId ? `&conversation_id=${conversationId}` : ""
+				const convFilter = useConvFilter && conversationId ? `&conversation_id=${conversationId}` : ""
 				// Use limit=200 — each Roo Code exchange is 4-5 messages; limit=50 only covers ~10 turns.
 				// A delegation crash after many turns would miss the approval_request_message.
 				const resp = await fetch(`${restBase}/v1/agents/${agentId}/messages?limit=200${convFilter}`, {

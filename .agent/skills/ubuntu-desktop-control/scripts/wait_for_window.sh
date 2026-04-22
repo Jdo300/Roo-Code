@@ -13,11 +13,15 @@ ELAPSED=0
 INTERVAL=2
 
 while true; do
-    WIN_ID=$(XAUTHORITY=/home/rgadmin/.Xauthority DISPLAY=:0 \
-        xdotool search --name "$PATTERN" 2>/dev/null | head -1)
+    # Use wmctrl -l to get a list of all window names and IDs
+    # This is more reliable than xdotool search --name for partial/bracketed matches
+    WIN_INFO=$(XAUTHORITY=/home/rgadmin/.Xauthority DISPLAY=:0 \
+        wmctrl -l | grep -i "$PATTERN" | head -1 || true)
 
-    if [[ -n "$WIN_ID" ]]; then
+    if [[ -n "$WIN_INFO" ]]; then
+        WIN_ID=$(echo "$WIN_INFO" | awk '{print $1}')
         echo "✅ Window found! WIN_ID=$WIN_ID (after ${ELAPSED}s)"
+        echo "   Title: $(echo "$WIN_INFO" | cut -d' ' -f5-)"
         export WIN_ID
         exit 0
     fi

@@ -47,7 +47,7 @@ export const isDynamicProvider = (key: string): key is DynamicProvider =>
  * Local providers require localhost API calls in order to get the model list.
  */
 
-export const localProviders = ["ollama", "lmstudio"] as const
+export const localProviders = ["ollama", "lmstudio", "letta"] as const
 
 export type LocalProvider = (typeof localProviders)[number]
 

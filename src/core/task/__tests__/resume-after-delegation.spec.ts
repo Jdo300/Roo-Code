@@ -14,13 +14,20 @@ vi.mock("../../environment/getEnvironmentDetails", () => ({
 import { Task } from "../Task"
 import { getEnvironmentDetails } from "../../environment/getEnvironmentDetails"
 
+/** Cast a stub to Task so tests can assign private/readonly fields via any. */
+type TaskStub = Record<string, any>
+
+function makeTaskStub(): TaskStub {
+	return Object.create(Task.prototype) as TaskStub
+}
+
 describe("Task.resumeAfterDelegation", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 	})
 
 	it("does not append environment details to a tool_result-only resume payload", async () => {
-		const task = Object.create(Task.prototype) as Task & Record<string, any>
+		const task = makeTaskStub()
 		task.taskId = "parent-task"
 		task.emit = vi.fn()
 		task.saveApiConversationHistory = vi.fn().mockResolvedValue(undefined)
@@ -58,7 +65,7 @@ describe("Task.resumeAfterDelegation", () => {
 	})
 
 	it("refreshes environment details when the last user message already contains text", async () => {
-		const task = Object.create(Task.prototype) as Task & Record<string, any>
+		const task = makeTaskStub()
 		task.taskId = "parent-task"
 		task.emit = vi.fn()
 		task.saveApiConversationHistory = vi.fn().mockResolvedValue(undefined)

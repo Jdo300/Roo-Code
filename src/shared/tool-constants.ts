@@ -70,6 +70,7 @@ export interface ToolUse<TName extends ToolName = ToolName> {
 	params: Partial<Record<ToolParamName, string>>
 	partial: boolean
 	nativeArgs?: any // Will be specialized in tools.ts
+	usedLegacyFormat?: boolean // Set by NativeToolCallParser when XML fallback format was used
 }
 
 export type ToolGroupConfig = {

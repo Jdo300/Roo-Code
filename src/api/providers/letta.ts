@@ -153,36 +153,58 @@ export class LettaHandler extends BaseProvider implements ApiHandler {
 		if (pendingItems.length === 0) return false
 
 		// Resolve each stale approval.
-		// For delegation tools (new_task), approve with an interruption message so the Letta
-		// agent can handle the result gracefully and return control without immediately retrying.
-		// Denying a new_task causes the agent to retry the delegation, creating an infinite loop.
-		// For all other tools, deny (safe to dismiss without a result).
+		// For delegation tools (new_task): send a tool_return with status:"error" so the Letta
+		// agent sees the tool result directly and returns control without immediately retrying.
+		// Using approve:true/false (ApprovalReturn) is wrong for client-side tools — it tells Letta
+		// to execute the tool server-side, which either fails or hangs. The correct format is
+		// ToolReturnCreate (type:"tool_return") which mirrors how buildToolReturnMessages works in
+		// normal flow. For all other tools, deny via approval (safe to dismiss without a result).
 		let cleared = false
 		for (const { toolCallId, toolName } of pendingItems) {
 			const isDelegation = toolName === "new_task"
-			const action = isDelegation ? "approving with interruption message" : "denying"
+			const action = isDelegation ? "returning interrupted tool result" : "denying"
 			console.debug(
 				`[LettaHandler] Pre-drain: ${action} stale approval ${toolCallId} (tool: ${toolName ?? "unknown"})`,
 			)
 			try {
-				await (this.client.agents.messages as any).create(agentId, {
-					messages: [
-						{
-							type: "approval",
-							approvals: [
-								{
-									type: "approval",
-									approve: isDelegation ? true : false,
-									tool_call_id: toolCallId,
-									reason: isDelegation
-										? "The previous delegation was interrupted by a session restart. " +
-											"Please report this to the user and return control without re-delegating."
-										: "Auto-denied: stale approval from interrupted session",
-								},
-							],
-						},
-					],
-				})
+				if (isDelegation) {
+					// For new_task: use tool_return format (same as buildToolReturnMessages) so Letta
+					// resolves the pending tool call and the agent processes the interruption gracefully.
+					await (this.client.agents.messages as any).create(agentId, {
+						messages: [
+							{
+								type: "tool_return",
+								tool_returns: [
+									{
+										type: "tool",
+										status: "error",
+										tool_call_id: toolCallId,
+										tool_return:
+											"The previous delegation was interrupted by a session restart. " +
+											"Please report this to the user and return control without re-delegating.",
+									},
+								],
+							},
+						],
+					})
+				} else {
+					// For other tools: deny via approval (safe — no result needed)
+					await (this.client.agents.messages as any).create(agentId, {
+						messages: [
+							{
+								type: "approval",
+								approvals: [
+									{
+										type: "approval",
+										approve: false,
+										tool_call_id: toolCallId,
+										reason: "Auto-denied: stale approval from interrupted session",
+									},
+								],
+							},
+						],
+					})
+				}
 				cleared = true
 				console.debug(`[LettaHandler] Pre-drain: resolved ${toolCallId}`)
 			} catch (resolveErr: any) {
